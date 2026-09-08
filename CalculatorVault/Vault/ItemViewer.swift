@@ -1,0 +1,142 @@
+import AVKit
+import ImageIO
+import SwiftUI
+
+/// Full-screen pager. Swipe between items, pinch to zoom photos, play videos.
+struct ItemViewer: View {
+    let store: VaultStore
+    @State var current: VaultItem
+    @State private var confirmDelete = false
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            TabView(selection: $current) {
+                ForEach(store.items) { item in
+                    Group {
+                        if item.isVideo { VideoPage(url: item.url) } else { PhotoPage(url: item.url) }
+                    }
+                    .tag(item)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .ignoresSafeArea()
+            .background(Color.black)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Close", systemImage: "xmark") { dismiss() }
+                }
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    ShareLink(item: current.url) { Image(systemName: "square.and.arrow.up") }
+                    Button("Delete", systemImage: "trash", role: .destructive) { confirmDelete = true }
+                }
+            }
+            .confirmationDialog("Delete this item?", isPresented: $confirmDelete, titleVisibility: .visible) {
+                Button("Delete", role: .destructive) { delete() }
+            }
+        }
+    }
+
+    private func delete() {
+        let index = store.items.firstIndex(of: current) ?? 0
+        store.delete([current])
+        if store.items.isEmpty { dismiss() } else { current = store.items[min(index, store.items.count - 1)] }
+    }
+}
+
+private struct VideoPage: View {
+    let url: URL
+    @State private var player: AVPlayer?
+
+    var body: some View {
+        VideoPlayer(player: player)
+            .onAppear { player = AVPlayer(url: url) }
+            .onDisappear { player?.pause(); player = nil }
+    }
+}
+
+private struct PhotoPage: View {
+    let url: URL
+    @State private var image: UIImage?
+
+    var body: some View {
+        ZoomableImage(image: image)
+            .task { image = await Task.detached { Self.load(url) }.value }
+    }
+
+    /// Decodes the photo at not more than 4096 pixels on the long side, with the EXIF orientation applied.
+    private nonisolated static func load(_ url: URL) -> UIImage? {
+        let options = [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                       kCGImageSourceCreateThumbnailWithTransform: true,
+                       kCGImageSourceThumbnailMaxPixelSize: 4096] as CFDictionary
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options) else { return nil }
+        return UIImage(cgImage: cgImage)
+    }
+}
+
+private struct ZoomableImage: UIViewRepresentable {
+    let image: UIImage?
+    func makeUIView(context: Context) -> ZoomScrollView { ZoomScrollView() }
+    func updateUIView(_ view: ZoomScrollView, context: Context) {
+        if view.image !== image { view.image = image }
+    }
+}
+
+/// UIScrollView with an aspect-fit image that stays centered while zoomed.
+final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
+    private let imageView = UIImageView()
+    private var fittedSize = CGSize.zero
+
+    var image: UIImage? {
+        get { imageView.image }
+        set { imageView.image = newValue; fittedSize = .zero; setNeedsLayout() }
+    }
+
+    init() {
+        super.init(frame: .zero)
+        delegate = self
+        maximumZoomScale = 6
+        showsVerticalScrollIndicator = false
+        showsHorizontalScrollIndicator = false
+        addSubview(imageView)
+        let tap = UITapGestureRecognizer(target: self, action: #selector(doubleTap))
+        tap.numberOfTapsRequired = 2
+        addGestureRecognizer(tap)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { nil }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard let image = imageView.image, bounds.width > 0, bounds.size != fittedSize else { return }
+        fittedSize = bounds.size
+        zoomScale = 1
+        let scale = min(bounds.width / image.size.width, bounds.height / image.size.height)
+        imageView.frame = CGRect(x: 0, y: 0, width: image.size.width * scale, height: image.size.height * scale)
+        contentSize = imageView.frame.size
+        center()
+    }
+
+    private func center() {
+        let dx = max(0, (bounds.width - contentSize.width) / 2)
+        let dy = max(0, (bounds.height - contentSize.height) / 2)
+        contentInset = UIEdgeInsets(top: dy, left: dx, bottom: dy, right: dx)
+    }
+
+    func viewForZooming(in scrollView: UIScrollView) -> UIView? { imageView }
+    func scrollViewDidZoom(_ scrollView: UIScrollView) { center() }
+
+    @objc private func doubleTap(_ gesture: UITapGestureRecognizer) {
+        if zoomScale > 1 {
+            setZoomScale(1, animated: true)
+        } else {
+            let point = gesture.location(in: imageView)
+            let size = CGSize(width: bounds.width / 3, height: bounds.height / 3)
+            zoom(to: CGRect(x: point.x - size.width / 2, y: point.y - size.height / 2,
+                            width: size.width, height: size.height), animated: true)
+        }
+    }
+}
