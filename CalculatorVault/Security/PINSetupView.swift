@@ -29,12 +29,13 @@ struct PINSetupView: View {
     }
 
     private func save() {
-        guard !requireCurrent || PINStore.verify(current) else { error = "The current PIN is not correct."; return }
         guard PINStore.isValid(pin) else { error = "Use 4 to 8 digits. The first digit must not be 0."; return }
         guard pin == confirm else { error = "The two PINs are not the same."; return }
         do {
-            try PINStore.save(pin)
+            if requireCurrent { try PINStore.change(from: current, to: pin) } else { try PINStore.save(pin) }
             onDone()
+        } catch VaultCrypto.Failure.wrongPIN {
+            error = "The current PIN is not correct."
         } catch {
             self.error = "The app could not save the PIN."
         }

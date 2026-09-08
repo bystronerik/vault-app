@@ -64,7 +64,9 @@ struct VaultView: View {
                 }
                 if selecting {
                     ToolbarItemGroup(placement: .bottomBar) {
-                        ShareLink(items: selected.map(\.url)) { Image(systemName: "square.and.arrow.up") }
+                        ShareLink(items: selected.map(VaultExport.init), preview: { SharePreview($0.item.url.lastPathComponent) }) {
+                            Image(systemName: "square.and.arrow.up")
+                        }
                             .disabled(selected.isEmpty)
                         Spacer()
                         Button("Delete", systemImage: "trash", role: .destructive) { confirmDelete = true }
@@ -96,11 +98,19 @@ private struct Thumbnail: View {
     let item: VaultItem
     @Environment(\.displayScale) private var scale
     @State private var image: UIImage?
+    /// The file cannot open: corrupt, or from a lost key.
+    @State private var failed = false
 
     var body: some View {
         Color(.secondarySystemBackground)
             .aspectRatio(1, contentMode: .fit)
-            .overlay { if let image { Image(uiImage: image).resizable().scaledToFill() } }
+            .overlay {
+                if let image {
+                    Image(uiImage: image).resizable().scaledToFill()
+                } else if failed {
+                    Image(systemName: "exclamationmark.triangle").font(.title2).foregroundStyle(.secondary)
+                }
+            }
             .overlay(alignment: .bottomLeading) {
                 if item.isVideo {
                     Image(systemName: "play.fill").font(.caption).foregroundStyle(.white).shadow(radius: 2).padding(6)
@@ -108,6 +118,9 @@ private struct Thumbnail: View {
             }
             .clipped()
             .contentShape(Rectangle())
-            .task { image = await VaultStore.image(for: item.url, side: 150, scale: scale) }
+            .task {
+                image = await VaultStore.image(for: item.url, side: 150, scale: scale)
+                failed = image == nil
+            }
     }
 }

@@ -1,5 +1,4 @@
 import AVKit
-import ImageIO
 import SwiftUI
 
 /// Full-screen pager. Swipe between items, pinch to zoom photos, play videos.
@@ -28,7 +27,9 @@ struct ItemViewer: View {
                     Button("Close", systemImage: "xmark") { dismiss() }
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    ShareLink(item: current.url) { Image(systemName: "square.and.arrow.up") }
+                    ShareLink(item: VaultExport(item: current), preview: SharePreview(current.url.lastPathComponent)) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
                     Button("Delete", systemImage: "trash", role: .destructive) { confirmDelete = true }
                 }
             }
@@ -45,34 +46,40 @@ struct ItemViewer: View {
     }
 }
 
+/// Plays through the resource loader. The loader stays in state so the asset can reach it.
 private struct VideoPage: View {
     let url: URL
     @State private var player: AVPlayer?
+    @State private var loader: VaultResourceLoader?
 
     var body: some View {
         VideoPlayer(player: player)
-            .onAppear { player = AVPlayer(url: url) }
-            .onDisappear { player?.pause(); player = nil }
+            .onAppear {
+                let (asset, loader) = makeAsset(for: url)
+                self.loader = loader
+                player = AVPlayer(playerItem: AVPlayerItem(asset: asset))
+            }
+            .onDisappear { player?.pause(); player = nil; loader = nil }
     }
 }
 
+/// Decrypts the photo to memory and decodes it at not more than 4096 pixels on the long side.
 private struct PhotoPage: View {
     let url: URL
     @State private var image: UIImage?
+    @State private var failed = false
 
     var body: some View {
         ZoomableImage(image: image)
-            .task { image = await Task.detached { Self.load(url) }.value }
-    }
-
-    /// Decodes the photo at not more than 4096 pixels on the long side, with the EXIF orientation applied.
-    private nonisolated static func load(_ url: URL) -> UIImage? {
-        let options = [kCGImageSourceCreateThumbnailFromImageAlways: true,
-                       kCGImageSourceCreateThumbnailWithTransform: true,
-                       kCGImageSourceThumbnailMaxPixelSize: 4096] as CFDictionary
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-              let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options) else { return nil }
-        return UIImage(cgImage: cgImage)
+            .overlay { if failed { Text("Cannot open this item").foregroundStyle(.secondary) } }
+            .task {
+                let key = Session.shared.masterKey
+                image = await Task.detached {
+                    guard let key, let data = try? VaultCrypto.decryptAll(url, key: key) else { return nil }
+                    return VaultCrypto.decodeImage(data, maxPixelSize: 4096)
+                }.value
+                failed = image == nil
+            }
     }
 }
 

@@ -1,15 +1,21 @@
+import CryptoKit
+import os
 import SwiftUI
 
 @main
 struct CalculatorVaultApp: App {
     init() {
-        // The Keychain survives a reinstall. Clear it on the first launch after install.
+        // The Keychain survives a reinstall. Clear it on the first launch after an install, unless a restored vault
+        // exists. Check the path without `vaultDirectory`, because that global creates the directory.
         if !UserDefaults.standard.bool(forKey: "installed") {
-            PINStore.delete()
+            if !FileManager.default.fileExists(atPath: URL.applicationSupportDirectory.appending(path: "Vault").path) {
+                PINStore.delete()
+            }
             UserDefaults.standard.set(true, forKey: "installed")
         }
         #if DEBUG
         CalculatorEngine.selfTest()
+        VaultCrypto.selfTest()
         #endif
     }
 
@@ -33,9 +39,22 @@ private final class TouchSpy: UIGestureRecognizer {
     /// True while a system picker is open. Its touches do not reach this app.
     var paused = false
     @ObservationIgnored private let cover = UIHostingController(rootView: CalculatorView())
+    @ObservationIgnored private let key = OSAllocatedUnfairLock<SymmetricKey?>(initialState: nil)
+    /// The master key while the vault is open. Safe to read from any thread.
+    var masterKey: SymmetricKey? { key.withLock { $0 } }
 
-    func unlock() { lastTouch = Date(); unlocked = true }
-    func lock() { unlocked = false }
+    func unlock(_ masterKey: SymmetricKey) {
+        key.withLock { $0 = masterKey }
+        lastTouch = Date()
+        unlocked = true
+    }
+
+    /// Clears the master key, so every decrypt stops, and removes the plaintext share copies.
+    func lock() {
+        unlocked = false
+        key.withLock { $0 = nil }
+        try? FileManager.default.removeItem(at: shareDirectory)
+    }
 
     private var window: UIWindow? {
         UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first

@@ -1,5 +1,5 @@
+import AVFoundation
 import PhotosUI
-import QuickLookThumbnailing
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -10,6 +10,9 @@ let vaultDirectory: URL = {
                                              attributes: [.protectionKey: FileProtectionType.complete])
     return dir
 }()
+
+/// tmp/share. Holds the plaintext copies for the share sheet. `Session.lock` removes it.
+let shareDirectory = URL.temporaryDirectory.appending(path: "share")
 
 struct VaultItem: Identifiable, Hashable {
     let url: URL
@@ -22,7 +25,12 @@ struct VaultItem: Identifiable, Hashable {
     private(set) var items: [VaultItem] = []
     private static let cache = NSCache<NSString, UIImage>()
 
-    init() { reload() }
+    init() {
+        // A crash or a lock during an import leaves a `.part` file. Delete it at the vault open.
+        let all = (try? FileManager.default.contentsOfDirectory(at: vaultDirectory, includingPropertiesForKeys: nil)) ?? []
+        for url in all where url.pathExtension == "part" { try? FileManager.default.removeItem(at: url) }
+        reload()
+    }
 
     func reload() {
         let urls = (try? FileManager.default.contentsOfDirectory(at: vaultDirectory, includingPropertiesForKeys: nil,
@@ -42,20 +50,32 @@ struct VaultItem: Identifiable, Hashable {
         reload()
     }
 
-    /// A downscaled image for photos and a poster frame for videos. `side` is in points.
+    /// A downscaled image for photos and the first frame for videos. `side` is in points. Nil when the file cannot open.
     // ponytail: memory cache only, so every unlock regenerates thumbnails. Cache to disk if the grid feels slow with hundreds of items.
     static func image(for url: URL, side: CGFloat, scale: CGFloat) async -> UIImage? {
         let key = "\(Int(side))|\(url.path)" as NSString
         if let cached = cache.object(forKey: key) { return cached }
-        let request = QLThumbnailGenerator.Request(fileAt: url, size: CGSize(width: side, height: side),
-                                                   scale: scale, representationTypes: .thumbnail)
-        guard let image = try? await QLThumbnailGenerator.shared.generateBestRepresentation(for: request).uiImage else { return nil }
-        cache.setObject(image, forKey: key)
+        guard let masterKey = Session.shared.masterKey else { return nil }
+        let pixels = Int(side * scale)
+        let image: UIImage? = await Task.detached {
+            if VaultItem(url: url).isVideo {
+                let (asset, loader) = makeAsset(for: url)
+                let generator = AVAssetImageGenerator(asset: asset)
+                generator.appliesPreferredTrackTransform = true
+                generator.maximumSize = CGSize(width: pixels, height: pixels)
+                let frame = try? await generator.image(at: .zero).image
+                withExtendedLifetime(loader) {}
+                return frame.map { UIImage(cgImage: $0) }
+            }
+            guard let data = try? VaultCrypto.decryptAll(url, key: masterKey) else { return nil }
+            return VaultCrypto.decodeImage(data, maxPixelSize: pixels)
+        }.value
+        if let image { cache.setObject(image, forKey: key) }
         return image
     }
 }
 
-/// Copies a picked photo or video into the vault directory. Keeps the original file bytes.
+/// Encrypts a picked photo or video into the vault directory. The app writes no plaintext copy.
 struct ImportedFile: Transferable {
     let url: URL
 
@@ -65,10 +85,34 @@ struct ImportedFile: Transferable {
     }
 
     init(copying source: URL) throws {
+        guard let key = Session.shared.masterKey else { throw VaultCrypto.Failure.locked }
         let name = "\(Int(Date().timeIntervalSince1970 * 1000))-\(UUID().uuidString.prefix(8))"
         let dest = vaultDirectory.appending(path: name).appendingPathExtension(source.pathExtension)
-        try FileManager.default.copyItem(at: source, to: dest)
-        try FileManager.default.setAttributes([.protectionKey: FileProtectionType.complete], ofItemAtPath: dest.path)
+        try VaultCrypto.encrypt(from: source, to: dest, key: key)
         url = dest
+    }
+}
+
+/// Decrypts an item to tmp/share for the share sheet. The mirror of `ImportedFile`.
+struct VaultExport: Transferable {
+    let item: VaultItem
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(exportedContentType: .movie) { try $0.file() }.exportingCondition { $0.item.isVideo }
+        FileRepresentation(exportedContentType: .image) { try $0.file() }.exportingCondition { !$0.item.isVideo }
+    }
+
+    private func file() throws -> SentTransferredFile {
+        guard let key = Session.shared.masterKey else { throw VaultCrypto.Failure.locked }
+        try FileManager.default.createDirectory(at: shareDirectory, withIntermediateDirectories: true,
+                                                attributes: [.protectionKey: FileProtectionType.complete])
+        let dest = shareDirectory.appending(path: item.url.lastPathComponent)
+        try? FileManager.default.removeItem(at: dest)
+        guard FileManager.default.createFile(atPath: dest.path, contents: nil,
+                                             attributes: [.protectionKey: FileProtectionType.complete]) else { throw VaultCrypto.Failure.badFormat }
+        let output = try FileHandle(forWritingTo: dest)
+        defer { try? output.close() }
+        try VaultCrypto.decrypt(item.url, key: key) { try output.write(contentsOf: $0) }
+        return SentTransferredFile(dest)
     }
 }

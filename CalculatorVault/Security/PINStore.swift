@@ -2,7 +2,8 @@ import CryptoKit
 import Foundation
 import Security
 
-/// Keeps the PIN in the Keychain as `salt (16 bytes) + SHA-256 hash (32 bytes)`.
+/// Keeps the wrapped master key in the Keychain. See `VaultCrypto` for the item format.
+/// The item has no `ThisDeviceOnly` accessibility, so it migrates in the iCloud device backup.
 enum PINStore {
     private static let query: [String: Any] = [
         kSecClass as String: kSecClassGenericPassword,
@@ -10,36 +11,42 @@ enum PINStore {
         kSecAttrAccount as String: "pin",
     ]
 
-    static func exists() -> Bool { read() != nil }
+    /// True only for an item in the current format. A leftover old item counts as absent.
+    static func exists() -> Bool { read().map(VaultCrypto.isItem) ?? false }
 
     /// 4 to 8 ASCII digits. The first digit must not be 0, because the calculator drops leading zeros.
     static func isValid(_ pin: String) -> Bool {
         (4...8).contains(pin.count) && pin.allSatisfy { $0.isASCII && $0.isWholeNumber } && !pin.hasPrefix("0")
     }
 
+    /// Makes a new master key and writes it wrapped under `pin`.
     static func save(_ pin: String) throws {
-        let salt = Data((0..<16).map { _ in UInt8.random(in: .min ... .max) })
-        var item = query
-        item[kSecValueData as String] = salt + hash(pin, salt: salt)
-        item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        delete()
-        let status = SecItemAdd(item as CFDictionary, nil)
-        guard status == errSecSuccess else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(status)) }
+        try write(VaultCrypto.wrap(SymmetricKey(size: .bits256), pin: pin))
     }
 
-    static func verify(_ pin: String) -> Bool {
-        guard isValid(pin), let record = read(), record.count == 48 else { return false }
-        return hash(pin, salt: record.prefix(16)) == record.suffix(32)
+    /// The master key, or nil for a wrong PIN or a missing item.
+    static func unlock(_ pin: String) -> SymmetricKey? {
+        guard isValid(pin), let item = read() else { return nil }
+        return try? VaultCrypto.unwrap(item, pin: pin)
+    }
+
+    /// Wraps the same master key under the new PIN. The vault files do not change.
+    static func change(from old: String, to new: String) throws {
+        guard let key = unlock(old) else { throw VaultCrypto.Failure.wrongPIN }
+        try write(VaultCrypto.wrap(key, pin: new))
     }
 
     static func delete() {
         SecItemDelete(query as CFDictionary)
     }
 
-    private static func hash(_ pin: String, salt: Data) -> Data {
-        var digest = Data(SHA256.hash(data: salt + Data(pin.utf8)))
-        for _ in 0..<10_000 { digest = Data(SHA256.hash(data: digest + salt)) }
-        return digest
+    private static func write(_ item: Data) throws {
+        var q = query
+        q[kSecValueData as String] = item
+        q[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
+        delete()
+        let status = SecItemAdd(q as CFDictionary, nil)
+        guard status == errSecSuccess else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(status)) }
     }
 
     private static func read() -> Data? {
