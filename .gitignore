@@ -1,3 +1,17 @@
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+.vscode/
+.omx/
+
+# OS
+.DS_Store
+
 xcuserdata/
 DerivedData/
 build/
