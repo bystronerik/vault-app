@@ -7,8 +7,6 @@ Type the PIN on the calculator and press `%` to open the vault.
 
 ## Screenshots
 
-<!-- TODO: add the images to docs/screenshots/ -->
-
 ![Calculator](docs/screenshots/calculator.png)
 ![Vault](docs/screenshots/vault.png)
 ![Set PIN](docs/screenshots/set-pin.png)
