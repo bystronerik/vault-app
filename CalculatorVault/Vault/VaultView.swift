@@ -111,11 +111,13 @@ struct VaultView: View {
 
 /// The settings page. It opens from the vault menu.
 private struct SettingsView: View {
+    @AppStorage("faceID") private var faceID = false
     @State private var changingPIN = false
 
     var body: some View {
         Form {
             Button("Change PIN", systemImage: "key") { changingPIN = true }
+            Toggle("Face ID", systemImage: "faceid", isOn: $faceID)
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)

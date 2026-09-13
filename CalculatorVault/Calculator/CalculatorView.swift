@@ -1,7 +1,9 @@
+import LocalAuthentication
 import SwiftUI
 
 struct CalculatorView: View {
     @State private var engine = CalculatorEngine()
+    @AppStorage("faceID") private var faceID = false
 
     private enum Key: Hashable {
         case digit(String), op(CalculatorEngine.Op), clear, sign, percent, equals
@@ -104,11 +106,26 @@ struct CalculatorView: View {
         case .percent:
             // ponytail: the KDF runs on the main thread for about 0.2 s, only for a 4-to-8 digit display. Move it to a Task if the lag shows.
             if let key = PINStore.unlock(engine.display) {
+                // Clear the display first, so the PIN does not stay on the screen when Face ID fails.
                 engine = CalculatorEngine()
-                Session.shared.unlock(key)
+                Task { if await faceIDPasses() { Session.shared.unlock(key) } }
             } else {
                 engine.percent()
             }
+        }
+    }
+
+    /// True when Face ID is off. Otherwise Face ID, with the device passcode as the fallback for a broken Face ID.
+    /// A device without a passcode has no Face ID, and only a person who knows the passcode can remove it.
+    /// So the check passes there, and a restore to a device without a passcode can still open the vault.
+    private func faceIDPasses() async -> Bool {
+        guard faceID else { return true }
+        do {
+            return try await LAContext().evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Open the vault")
+        } catch LAError.passcodeNotSet {
+            return true
+        } catch {
+            return false
         }
     }
 }

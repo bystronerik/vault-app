@@ -28,6 +28,9 @@ Build from source:
 3. To lock the vault, tap the lock button. The vault also locks when the app goes to the background,
    or after 60 seconds with no touch.
 4. To change the PIN, open the vault, tap the `...` menu, tap **Settings**, and tap **Change PIN**.
+5. To use Face ID, open the vault, tap the `...` menu, tap **Settings**, and turn on **Face ID**.
+   Face ID is off by default. When it is on, the app asks for Face ID after the correct PIN.
+   If Face ID fails, you can type the device passcode.
 
 There is no PIN recovery. If you forget the PIN, the vault files are lost.
 
@@ -38,6 +41,7 @@ The app protects the vault files and the master key.
 The app protects against:
 
 - a person who holds the unlocked phone and does not know the PIN,
+- with Face ID on, a person who holds the unlocked phone and knows the PIN, but not the device passcode,
 - a person who looks at the app switcher,
 - a person who reads the app files on a locked device,
 - a person who reads the iCloud backup.
@@ -47,6 +51,7 @@ The app does not protect against:
 - a person with the unlocked phone who finds the app on the home screen.
   The app looks like a calculator, but it does not hide that it exists.
 - a person who extracts the Keychain item and tries PINs offline. A 4-digit PIN has 10 000 values.
+  Face ID does not prevent this.
 - malware or a jailbroken device. Decrypted data is in memory while the vault is open.
 
 A hidden vault is not a substitute for the device passcode and iOS data protection.
@@ -69,6 +74,16 @@ Code: `CalculatorVault/Security/` holds the PIN and Keychain code.
 - The Keychain item holds a version byte, the salt, and the wrapped master key.
 - A wrong PIN fails the AES-GCM tag check. Each try costs about 0.2 s.
 - Change PIN wraps the same master key under the new PIN. The vault files do not change.
+
+### Face ID
+
+- Face ID is off by default. The setting is in `UserDefaults`, so the device backup includes it.
+- When Face ID is on, the app runs the `deviceOwnerAuthentication` policy after a correct PIN.
+  The vault opens only when the policy passes.
+- The system tries Face ID first. If Face ID fails, is locked, or is not set up, the system asks for the device passcode.
+- A device without a passcode has no Face ID, so the check passes there.
+  To remove the passcode, a person must know it. That person can also type the passcode at the check.
+- Face ID does not change the encryption. The PIN alone unwraps the master key.
 
 ### File format
 
