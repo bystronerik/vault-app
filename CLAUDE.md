@@ -33,3 +33,9 @@ STE rules that apply most:
 - Write about one topic per paragraph, with not more than six sentences.
 - Do not use idioms, metaphors, or other figurative language.
 - Use one name for one thing. Use the names that the code and the docs use.
+
+## Simulator
+
+Always use the PIN 1234 in the simulator. Use it on the Set PIN screen and
+to open the vault. If a test changes the PIN, change it to 1234 again after
+the test.
