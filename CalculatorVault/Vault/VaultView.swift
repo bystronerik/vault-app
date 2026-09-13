@@ -85,7 +85,9 @@ struct VaultView: View {
                 guard !new.isEmpty else { return }
                 Task { await store.importItems(new); picks = [] }
             }
-            .confirmationDialog("Delete ^[\(selected.count) item](inflect: true)?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            // The dialog title is plain text, so Foundation must apply the inflection first.
+            .confirmationDialog(String(AttributedString(localized: "Delete ^[\(selected.count) item](inflect: true)?").characters),
+                                isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("Delete", role: .destructive) { store.delete(selected); selected = []; selecting = false }
             }
             .fullScreenCover(item: $viewing) { item in ItemViewer(store: store, current: item) }
