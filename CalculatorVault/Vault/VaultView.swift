@@ -116,8 +116,8 @@ private struct SettingsView: View {
 
     var body: some View {
         Form {
-            Button("Change PIN", systemImage: "key") { changingPIN = true }
-            Toggle("Face ID", systemImage: "faceid", isOn: $faceID)
+            Button("Change PIN") { changingPIN = true }
+            Toggle("Face ID", isOn: $faceID)
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
