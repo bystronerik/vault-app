@@ -27,7 +27,7 @@ Build from source:
 2. To open the vault, type the PIN and press `%`. With a wrong PIN, `%` works as the percent operator.
 3. To lock the vault, tap the lock button. The vault also locks when the app goes to the background,
    or after 60 seconds with no touch.
-4. To change the PIN, open the vault, tap the `...` menu, and tap **Change PIN**.
+4. To change the PIN, open the vault, tap the `...` menu, tap **Settings**, and tap **Change PIN**.
 
 There is no PIN recovery. If you forget the PIN, the vault files are lost.
 
@@ -106,7 +106,7 @@ At the lock, the app clears the master key and empties the in-memory cache of th
 ## Project layout
 
 - `CalculatorVault/Calculator/` — calculator engine and view.
-- `CalculatorVault/Vault/` — gallery grid and full-screen viewer.
+- `CalculatorVault/Vault/` — gallery grid, settings page, and full-screen viewer.
 - `CalculatorVault/Security/` — Keychain PIN store and PIN setup form.
 - `CalculatorVault/Storage/` — vault directory, encryption, import, delete, thumbnails, video loader.
 

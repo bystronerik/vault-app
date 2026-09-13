@@ -9,7 +9,7 @@ struct VaultView: View {
     @State private var selecting = false
     @State private var selected: Set<VaultItem> = []
     @State private var viewing: VaultItem?
-    @State private var changingPIN = false
+    @State private var showingSettings = false
     @State private var confirmDelete = false
     /// The items for the delete dialog: the selection, or the one item from the long-press menu.
     @State private var deleting: Set<VaultItem> = []
@@ -69,7 +69,7 @@ struct VaultView: View {
                         Button("Import", systemImage: "plus") { picking = true }
                         Menu {
                             Button("Select", systemImage: "checkmark.circle") { selecting = true }
-                            Button("Change PIN", systemImage: "key") { changingPIN = true }
+                            Button("Settings", systemImage: "gear") { showingSettings = true }
                         } label: {
                             Image(systemName: "ellipsis.circle")
                         }
@@ -104,8 +104,22 @@ struct VaultView: View {
                 Button("Delete", role: .destructive) { store.delete(deleting); selected = []; selecting = false }
             }
             .fullScreenCover(item: $viewing) { item in ItemViewer(store: store, current: item) }
-            .sheet(isPresented: $changingPIN) { PINSetupView(requireCurrent: true) { changingPIN = false } }
+            .navigationDestination(isPresented: $showingSettings) { SettingsView() }
         }
+    }
+}
+
+/// The settings page. It opens from the vault menu.
+private struct SettingsView: View {
+    @State private var changingPIN = false
+
+    var body: some View {
+        Form {
+            Button("Change PIN", systemImage: "key") { changingPIN = true }
+        }
+        .navigationTitle("Settings")
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $changingPIN) { PINSetupView(requireCurrent: true) { changingPIN = false } }
     }
 }
 
