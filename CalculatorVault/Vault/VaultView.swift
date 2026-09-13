@@ -10,6 +10,8 @@ struct VaultView: View {
     @State private var viewing: VaultItem?
     @State private var changingPIN = false
     @State private var confirmDelete = false
+    /// The items for the delete dialog: the selection, or the one item from the long-press menu.
+    @State private var deleting: Set<VaultItem> = []
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 2), count: 3)
 
     var body: some View {
@@ -33,6 +35,16 @@ struct VaultView: View {
                                 } else {
                                     viewing = item
                                 }
+                            }
+                            .contextMenu {
+                                if !selecting {
+                                    ShareLink(item: VaultExport(item: item), preview: SharePreview(item.url.lastPathComponent))
+                                    Button("Delete", systemImage: "trash", role: .destructive) {
+                                        deleting = [item]; confirmDelete = true
+                                    }
+                                }
+                            } preview: {
+                                ItemPreview(item: item)
                             }
                     }
                 }
@@ -69,7 +81,7 @@ struct VaultView: View {
                         }
                             .disabled(selected.isEmpty)
                         Spacer()
-                        Button("Delete", systemImage: "trash", role: .destructive) { confirmDelete = true }
+                        Button("Delete", systemImage: "trash", role: .destructive) { deleting = selected; confirmDelete = true }
                             .disabled(selected.isEmpty)
                     }
                 }
@@ -86,9 +98,9 @@ struct VaultView: View {
                 Task { await store.importItems(new); picks = [] }
             }
             // The dialog title is plain text, so Foundation must apply the inflection first.
-            .confirmationDialog(String(AttributedString(localized: "Delete ^[\(selected.count) item](inflect: true)?").characters),
+            .confirmationDialog(String(AttributedString(localized: "Delete ^[\(deleting.count) item](inflect: true)?").characters),
                                 isPresented: $confirmDelete, titleVisibility: .visible) {
-                Button("Delete", role: .destructive) { store.delete(selected); selected = []; selecting = false }
+                Button("Delete", role: .destructive) { store.delete(deleting); selected = []; selecting = false }
             }
             .fullScreenCover(item: $viewing) { item in ItemViewer(store: store, current: item) }
             .sheet(isPresented: $changingPIN) { PINSetupView(requireCurrent: true) { changingPIN = false } }
@@ -124,5 +136,31 @@ private struct Thumbnail: View {
                 image = await VaultStore.image(for: item.url, side: 150, scale: scale)
                 failed = image == nil
             }
+    }
+}
+
+/// The long-press preview. Shows the photo, or the first frame of a video, aspect-fit at 400 points on the long side.
+private struct ItemPreview: View {
+    let item: VaultItem
+    @Environment(\.displayScale) private var scale
+    @State private var image: UIImage?
+    @State private var failed = false
+
+    var body: some View {
+        if let image {
+            // Size by the aspect ratio, not the pixels, so a low-resolution item does not show small.
+            let fit = 400 / max(image.size.width, image.size.height)
+            Image(uiImage: image).resizable().frame(width: image.size.width * fit, height: image.size.height * fit)
+        } else {
+            Color(.secondarySystemBackground)
+                .frame(width: 300, height: 300)
+                .overlay {
+                    if failed { Image(systemName: "exclamationmark.triangle").font(.title2).foregroundStyle(.secondary) }
+                }
+                .task {
+                    image = await VaultStore.image(for: item.url, side: 400, scale: scale)
+                    failed = image == nil
+                }
+        }
     }
 }
