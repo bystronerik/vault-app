@@ -23,7 +23,8 @@ struct VaultItem: Identifiable, Hashable {
 /// The directory listing is the model. File names sort in import order.
 @MainActor @Observable final class VaultStore {
     private(set) var items: [VaultItem] = []
-    private static let cache = NSCache<NSString, UIImage>()
+    /// Decrypted thumbnails and previews. `Session.lock` empties it.
+    static let cache = NSCache<NSString, UIImage>()
 
     init() {
         // A crash or a lock during an import leaves a `.part` file. Delete it at the vault open.
@@ -70,7 +71,8 @@ struct VaultItem: Identifiable, Hashable {
             guard let data = try? VaultCrypto.decryptAll(url, key: masterKey) else { return nil }
             return VaultCrypto.decodeImage(data, maxPixelSize: pixels)
         }.value
-        if let image { cache.setObject(image, forKey: key) }
+        // A decrypt can finish after the lock. Do not put its image back into the empty cache.
+        if let image, Session.shared.masterKey != nil { cache.setObject(image, forKey: key) }
         return image
     }
 }

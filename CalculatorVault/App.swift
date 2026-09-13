@@ -49,10 +49,11 @@ private final class TouchSpy: UIGestureRecognizer {
         unlocked = true
     }
 
-    /// Clears the master key, so every decrypt stops, and removes the plaintext share copies.
-    func lock() {
+    /// Clears the master key, so every decrypt stops, empties the image cache, and removes the plaintext share copies.
+    @MainActor func lock() {
         unlocked = false
         key.withLock { $0 = nil }
+        VaultStore.cache.removeAllObjects()
         try? FileManager.default.removeItem(at: shareDirectory)
     }
 

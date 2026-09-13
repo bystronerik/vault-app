@@ -92,6 +92,7 @@ Code: `CalculatorVault/Security/` holds the PIN and Keychain code.
 The vault locks when you tap the lock button, when the app goes to the background,
 and after 60 seconds with no touch. A running video does not count as a touch.
 When the app becomes inactive, a calculator view covers the window, so the app switcher does not show the vault.
+At the lock, the app clears the master key and empties the in-memory cache of thumbnails and previews.
 
 ### Backup, restore, and reinstall
 
