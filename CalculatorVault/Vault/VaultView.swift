@@ -1,3 +1,4 @@
+import AVFoundation
 import PhotosUI
 import SwiftUI
 
@@ -139,7 +140,7 @@ private struct Thumbnail: View {
     }
 }
 
-/// The long-press preview. Shows the photo, or the first frame of a video, aspect-fit at 400 points on the long side.
+/// The long-press preview. Shows the photo, or plays the video over its first frame, aspect-fit at 400 points on the long side.
 private struct ItemPreview: View {
     let item: VaultItem
     @Environment(\.displayScale) private var scale
@@ -151,6 +152,7 @@ private struct ItemPreview: View {
             // Size by the aspect ratio, not the pixels, so a low-resolution item does not show small.
             let fit = 400 / max(image.size.width, image.size.height)
             Image(uiImage: image).resizable().frame(width: image.size.width * fit, height: image.size.height * fit)
+                .overlay { if item.isVideo { PreviewPlayer(url: item.url) } }
         } else {
             Color(.secondarySystemBackground)
                 .frame(width: 300, height: 300)
@@ -161,6 +163,43 @@ private struct ItemPreview: View {
                     image = await VaultStore.image(for: item.url, side: 400, scale: scale)
                     failed = image == nil
                 }
+        }
+    }
+}
+
+private struct PreviewPlayer: UIViewRepresentable {
+    let url: URL
+    func makeUIView(context: Context) -> PlayerView { PlayerView(url: url) }
+    func updateUIView(_ view: PlayerView, context: Context) {}
+}
+
+/// Plays a video with sound and no controls. It plays only while it is in a window, so it stops when the menu closes.
+private final class PlayerView: UIView {
+    override class var layerClass: AnyClass { AVPlayerLayer.self }
+    private let url: URL
+    /// The asset reads the file through the loader. Keep the loader while the player exists.
+    private var loader: VaultResourceLoader?
+
+    init(url: URL) {
+        self.url = url
+        super.init(frame: .zero)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { nil }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        let playerLayer = layer as! AVPlayerLayer
+        if window == nil {
+            playerLayer.player?.pause()
+            playerLayer.player = nil
+            loader = nil
+        } else if playerLayer.player == nil {
+            let (asset, loader) = makeAsset(for: url)
+            self.loader = loader
+            playerLayer.player = AVPlayer(playerItem: AVPlayerItem(asset: asset))
+            playerLayer.player?.play()
         }
     }
 }
