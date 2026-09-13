@@ -173,12 +173,13 @@ private struct PreviewPlayer: UIViewRepresentable {
     func updateUIView(_ view: PlayerView, context: Context) {}
 }
 
-/// Plays a video with sound and no controls. It plays only while it is in a window, so it stops when the menu closes.
+/// Plays a video in a loop, with sound and no controls. It plays only while it is in a window, so it stops when the menu closes.
 private final class PlayerView: UIView {
     override class var layerClass: AnyClass { AVPlayerLayer.self }
     private let url: URL
-    /// The asset reads the file through the loader. Keep the loader while the player exists.
+    /// The asset reads the file through the loader, and the looper repeats the item. Keep both while the player exists.
     private var loader: VaultResourceLoader?
+    private var looper: AVPlayerLooper?
 
     init(url: URL) {
         self.url = url
@@ -194,12 +195,15 @@ private final class PlayerView: UIView {
         if window == nil {
             playerLayer.player?.pause()
             playerLayer.player = nil
+            looper = nil
             loader = nil
         } else if playerLayer.player == nil {
             let (asset, loader) = makeAsset(for: url)
+            let player = AVQueuePlayer()
             self.loader = loader
-            playerLayer.player = AVPlayer(playerItem: AVPlayerItem(asset: asset))
-            playerLayer.player?.play()
+            looper = AVPlayerLooper(player: player, templateItem: AVPlayerItem(asset: asset))
+            playerLayer.player = player
+            player.play()
         }
     }
 }
