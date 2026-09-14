@@ -231,6 +231,8 @@ private final class PlayerView: UIView {
         } else if playerLayer.player == nil {
             let (asset, loader) = makeAsset(for: url)
             let player = AVQueuePlayer()
+            // The SDK header gives this setting for a resource loader delegate that loads the media data.
+            player.automaticallyWaitsToMinimizeStalling = false
             self.loader = loader
             looper = AVPlayerLooper(player: player, templateItem: AVPlayerItem(asset: asset))
             playerLayer.player = player

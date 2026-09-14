@@ -57,7 +57,10 @@ private struct VideoPage: View {
             .onAppear {
                 let (asset, loader) = makeAsset(for: url)
                 self.loader = loader
-                player = AVPlayer(playerItem: AVPlayerItem(asset: asset))
+                let player = AVPlayer(playerItem: AVPlayerItem(asset: asset))
+                // The SDK header gives this setting for a resource loader delegate that loads the media data.
+                player.automaticallyWaitsToMinimizeStalling = false
+                self.player = player
             }
             .onDisappear { player?.pause(); player = nil; loader = nil }
     }

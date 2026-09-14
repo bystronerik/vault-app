@@ -9,6 +9,12 @@ final class VaultResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
 
     func resourceLoader(_: AVAssetResourceLoader,
                         shouldWaitForLoadingOfRequestedResource request: AVAssetResourceLoadingRequest) -> Bool {
+        // Serve off the delegate queue, so AVFoundation can send the next request and cancel this one.
+        DispatchQueue.global(qos: .userInitiated).async { self.serve(request) }
+        return true
+    }
+
+    private func serve(_ request: AVAssetResourceLoadingRequest) {
         do {
             guard let key = Session.shared.masterKey else { throw VaultCrypto.Failure.locked }
             let total = try VaultCrypto.plaintextLength(url)
@@ -18,10 +24,12 @@ final class VaultResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
                 info.isByteRangeAccessSupported = true
             }
             if let data = request.dataRequest {
-                let start = UInt64(data.requestedOffset)
+                let start = min(UInt64(data.requestedOffset), total)
                 let end = data.requestsAllDataToEndOfResource ? total : min(total, start + UInt64(data.requestedLength))
                 try VaultCrypto.decrypt(url, key: key, range: start..<end) {
                     guard !request.isCancelled else { throw CancellationError() }
+                    // A long request stops at the lock.
+                    guard Session.shared.masterKey != nil else { throw VaultCrypto.Failure.locked }
                     data.respond(with: $0)
                 }
             }
@@ -29,7 +37,6 @@ final class VaultResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
         } catch {
             if !request.isCancelled { request.finishLoading(with: error) }
         }
-        return true
     }
 }
 

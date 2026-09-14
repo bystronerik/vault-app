@@ -230,6 +230,7 @@ private func footprint() -> UInt64 {
         // `VideoPlayer` shows the frames. Without a video output, a seek completes before AVFoundation loads any data.
         item.add(AVPlayerItemVideoOutput(pixelBufferAttributes: nil))
         let player = AVPlayer(playerItem: item)
+        player.automaticallyWaitsToMinimizeStalling = false
         let ready = expectation(description: "ready to play")
         ready.assertForOverFulfill = false
         let observation = item.observe(\.status, options: .initial) { item, _ in
@@ -241,7 +242,8 @@ private func footprint() -> UInt64 {
         return (player, loader)
     }
 
-    /// Removes the item and waits until the loader queue is idle, so that the next run does not share the CPU with it.
+    /// Removes the item and waits for the callbacks on the loader queue. The loader serves the requests on another queue,
+    /// and a cancelled request stops within one chunk.
     private func close(_ opened: (player: AVPlayer, loader: VaultResourceLoader)) {
         withExtendedLifetime(opened.loader) {
             let queue = (opened.player.currentItem?.asset as? AVURLAsset)?.resourceLoader.delegateQueue
@@ -308,6 +310,40 @@ private func footprint() -> UInt64 {
             try autoreleasepool { try VaultCrypto.encrypt(from: sourceVideo(megabytes: megabytes), to: url, key: key) }
         }
         return url
+    }
+}
+
+extension VaultPerformanceTests {
+    /// The loader serves the same video samples as the plaintext file. A loader that gives short data can still reach
+    /// "ready to play".
+    func testLoaderReadsAllSamples() async throws {
+        let (asset, loader) = try makeAsset(for: sealedVideo(megabytes: 100))
+        let sealed = try await samples(of: asset)
+        withExtendedLifetime(loader) {}
+        let plain = try await samples(of: AVURLAsset(url: sourceVideo(megabytes: 100)))
+        XCTAssertGreaterThan(plain.count, 0)
+        XCTAssertEqual(sealed.count, plain.count)
+        XCTAssertEqual(sealed.digest, plain.digest)
+    }
+
+    /// Reads all video samples of `asset` with `AVAssetReader`. Returns their number and the SHA-256 of their bytes.
+    private func samples(of asset: AVAsset) async throws -> (count: Int, digest: SHA256Digest) {
+        let tracks = try await asset.loadTracks(withMediaType: .video)
+        let track = try XCTUnwrap(tracks.first)
+        let reader = try AVAssetReader(asset: asset)
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+        output.alwaysCopiesSampleData = false
+        reader.add(output)
+        XCTAssertTrue(reader.startReading(), String(describing: reader.error))
+        var count = 0, hash = SHA256()
+        // The reader can also give marker buffers with no data.
+        while let buffer = output.copyNextSampleBuffer() {
+            guard let data = buffer.dataBuffer else { continue }
+            count += buffer.numSamples
+            try hash.update(data: data.dataBytes())
+        }
+        XCTAssertEqual(reader.status, .completed, String(describing: reader.error))
+        return (count, hash.finalize())
     }
 }
 
