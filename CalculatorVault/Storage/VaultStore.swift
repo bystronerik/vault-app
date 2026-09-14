@@ -1,4 +1,6 @@
 import AVFoundation
+import CryptoKit
+import os
 import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
@@ -13,6 +15,28 @@ let vaultDirectory: URL = {
 
 /// tmp/share. Holds the plaintext copies for the share sheet. `Session.lock` and the app launch remove it.
 let shareDirectory = URL.temporaryDirectory.appending(path: "share")
+
+private let imageQueue: OperationQueue = {
+    let queue = OperationQueue()
+    // ponytail: two decodes at a time. Measure a wider queue on a device if the first scroll after the update is slow.
+    queue.maxConcurrentOperationCount = 2
+    queue.qualityOfService = .userInitiated
+    return queue
+}()
+
+/// Runs `work` with the master key on `imageQueue`, off the Swift concurrency pool, because an ImageIO decode blocks its thread.
+/// Returns nil and skips `work` when the vault is locked or the task is cancelled before `work` starts.
+private func onImageQueue<T>(_ work: @escaping (SymmetricKey) -> T?) async -> T? {
+    let cancelled = OSAllocatedUnfairLock(initialState: false)
+    return await withTaskCancellationHandler {
+        await withCheckedContinuation { continuation in
+            imageQueue.addOperation {
+                guard !cancelled.withLock({ $0 }), let key = Session.shared.masterKey else { return continuation.resume(returning: nil) }
+                continuation.resume(returning: work(key))
+            }
+        }
+    } onCancel: { cancelled.withLock { $0 = true } }
+}
 
 struct VaultItem: Identifiable, Hashable {
     let url: URL
@@ -58,24 +82,32 @@ struct VaultItem: Identifiable, Hashable {
     static func image(for url: URL, side: CGFloat, scale: CGFloat) async -> UIImage? {
         let key = "\(Int(side))|\(url.path)" as NSString
         if let cached = cache.object(forKey: key) { return cached }
-        guard let masterKey = Session.shared.masterKey else { return nil }
+        guard Session.shared.masterKey != nil else { return nil }
         let pixels = Int(side * scale)
-        let image: UIImage? = await Task.detached {
-            if VaultItem(url: url).isVideo {
-                let (asset, loader) = makeAsset(for: url)
-                let generator = AVAssetImageGenerator(asset: asset)
-                generator.appliesPreferredTrackTransform = true
-                generator.maximumSize = CGSize(width: pixels, height: pixels)
-                let frame = try? await generator.image(at: .zero).image
-                withExtendedLifetime(loader) {}
-                return frame.map { UIImage(cgImage: $0) }
-            }
-            guard let data = try? VaultCrypto.decryptAll(url, key: masterKey) else { return nil }
-            return VaultCrypto.decodeImage(data, maxPixelSize: pixels)
-        }.value
+        let image: UIImage?
+        if VaultItem(url: url).isVideo {
+            // The generator suspends and does not block a thread, so it needs no image queue.
+            let (asset, loader) = makeAsset(for: url)
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: pixels, height: pixels)
+            let frame = try? await generator.image(at: .zero).image
+            withExtendedLifetime(loader) {}
+            image = frame.map { UIImage(cgImage: $0) }
+        } else {
+            image = await Self.image(for: url, maxPixelSize: pixels)
+        }
         // A decrypt can finish after the lock. Do not put its image back into the empty cache.
         if let image, Session.shared.masterKey != nil { cache.setObject(image, forKey: key) }
         return image
+    }
+
+    /// Decrypts a photo and decodes it at not more than `maxPixelSize` pixels on the long side. Does not use the cache.
+    static func image(for url: URL, maxPixelSize: Int) async -> UIImage? {
+        await onImageQueue { key in
+            guard let data = try? VaultCrypto.decryptAll(url, key: key) else { return nil }
+            return VaultCrypto.decodeImage(data, maxPixelSize: maxPixelSize)
+        }
     }
 }
 

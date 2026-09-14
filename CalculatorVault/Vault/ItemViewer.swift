@@ -76,11 +76,9 @@ private struct PhotoPage: View {
         ZoomableImage(image: image)
             .overlay { if failed { Text(.itemViewerErrorCannotOpen).foregroundStyle(.secondary) } }
             .task {
-                let key = Session.shared.masterKey
-                image = await Task.detached {
-                    guard let key, let data = try? VaultCrypto.decryptAll(url, key: key) else { return nil }
-                    return VaultCrypto.decodeImage(data, maxPixelSize: 4096)
-                }.value
+                let image = await VaultStore.image(for: url, maxPixelSize: 4096)
+                guard !Task.isCancelled else { return }
+                self.image = image
                 failed = image == nil
             }
     }

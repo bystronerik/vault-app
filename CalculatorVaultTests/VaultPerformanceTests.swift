@@ -82,14 +82,13 @@ private func footprint() -> UInt64 {
     }
 
     /// First screen: the thumbnails of the first 18 items at side 150 and scale 3, as `Thumbnail` on an iPhone 17.
-    /// The calls run one at a time. When the 18 calls run at the same time, the HEIC decoder blocks all threads of the
-    /// Swift concurrency pool on the simulator, and no call completes.
+    /// The 18 calls start at the same time, as the cells of the grid do.
     private func measureFirstScreen(count: Int) throws {
         let store = try autoreleasepool { try VaultStore(directory: photoDirectory(count: count)) }
         var result = (items: 0, failed: 0)
         measure(iterations: 5) {
             startMeasuring()
-            result = thumbnails(store.items.prefix(18))
+            result = thumbnailsAtOnce(store.items.prefix(18))
             stopMeasuring()
         }
         XCTAssertEqual(result.items, 18)
@@ -314,6 +313,23 @@ private func footprint() -> UInt64 {
 }
 
 extension VaultPerformanceTests {
+    /// Makes the grid thumbnails of `items` with calls that start at the same time.
+    private func thumbnailsAtOnce(_ items: ArraySlice<VaultItem>) -> (items: Int, failed: Int) {
+        run {
+            await withTaskGroup(of: Bool.self) { group in
+                for item in items {
+                    group.addTask { await VaultStore.image(for: item.url, side: 150, scale: 3) != nil }
+                }
+                var result = (items: 0, failed: 0)
+                for await loaded in group {
+                    result.items += 1
+                    if !loaded { result.failed += 1 }
+                }
+                return result
+            }
+        }
+    }
+
     /// The loader serves the same video samples as the plaintext file. A loader that gives short data can still reach
     /// "ready to play".
     func testLoaderReadsAllSamples() async throws {
