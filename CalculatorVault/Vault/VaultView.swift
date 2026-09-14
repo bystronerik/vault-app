@@ -13,43 +13,60 @@ struct VaultView: View {
     @State private var confirmDelete = false
     /// The items for the delete dialog: the selection, or the one item from the long-press menu.
     @State private var deleting: Set<VaultItem> = []
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 2), count: 3)
+    /// The column counts of the grid, from the largest items to the smallest. A pinch moves one step.
+    private static let columnCounts = [3, 5, 15]
+    @AppStorage("gridColumns") private var columnCount = 3
+    /// The frame of the grid in the scroll view. The pinch uses it to find the item under the fingers.
+    @State private var gridFrame = CGRect.zero
+    /// The magnification at the last column change of the running pinch.
+    @State private var pinchScale: CGFloat = 1
+    @GestureState private var pinching = false
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                LazyVGrid(columns: columns, spacing: 2) {
-                    ForEach(store.items) { item in
-                        Thumbnail(item: item)
-                            .opacity(selected.contains(item) ? 0.6 : 1)
-                            .overlay(alignment: .bottomTrailing) {
-                                if selecting {
-                                    Image(systemName: selected.contains(item) ? "checkmark.circle.fill" : "circle")
-                                        .font(.title3)
-                                        .foregroundStyle(.white, .blue)
-                                        .padding(6)
-                                }
-                            }
-                            .onTapGesture {
-                                if selecting {
-                                    if !selected.insert(item).inserted { selected.remove(item) }
-                                } else {
-                                    viewing = item
-                                }
-                            }
-                            .contextMenu {
-                                if !selecting {
-                                    ShareLink(item: VaultExport(item: item), preview: SharePreview(item.url.lastPathComponent))
-                                    Button(.vaultDeleteButton, systemImage: "trash", role: .destructive) {
-                                        deleting = [item]; confirmDelete = true
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: columnCount), spacing: 2) {
+                        ForEach(store.items) { item in
+                            // The thumbnail file size for 3 columns. Smaller cells decode smaller images, so that 15 columns fill faster.
+                            Thumbnail(item: item, maxPixelSize: thumbnailPixels * 3 / columnCount)
+                                .opacity(selected.contains(item) ? 0.6 : 1)
+                                .overlay(alignment: .bottomTrailing) {
+                                    if selecting {
+                                        Image(systemName: selected.contains(item) ? "checkmark.circle.fill" : "circle")
+                                            .font(.title3)
+                                            .foregroundStyle(.white, .blue)
+                                            .padding(6)
                                     }
                                 }
-                            } preview: {
-                                ItemPreview(item: item)
-                            }
+                                .onTapGesture {
+                                    if selecting {
+                                        if !selected.insert(item).inserted { selected.remove(item) }
+                                    } else {
+                                        viewing = item
+                                    }
+                                }
+                                .contextMenu {
+                                    if !selecting {
+                                        ShareLink(item: VaultExport(item: item), preview: SharePreview(item.url.lastPathComponent))
+                                        Button(.vaultDeleteButton, systemImage: "trash", role: .destructive) {
+                                            deleting = [item]; confirmDelete = true
+                                        }
+                                    }
+                                } preview: {
+                                    ItemPreview(item: item)
+                                }
+                        }
                     }
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .scrollView) } action: { gridFrame = $0 }
                 }
+                // Simultaneous, so that the pinch does not block the scroll, the taps, and the long-press menus.
+                .simultaneousGesture(MagnifyGesture()
+                    .updating($pinching) { _, pinching, _ in pinching = true }
+                    .onChanged { pinch($0, proxy: proxy) })
             }
+            // The gesture state also resets when the system cancels the pinch. A cancelled pinch does not call onEnded.
+            .onChange(of: pinching) { _, on in if !on { pinchScale = 1 } }
             .overlay {
                 if store.items.isEmpty {
                     ContentUnavailableView(.vaultEmptyTitle, systemImage: "photo.on.rectangle",
@@ -107,6 +124,24 @@ struct VaultView: View {
             .navigationDestination(isPresented: $showingSettings) { SettingsView() }
         }
     }
+
+    /// Changes the column count one step when the pinch passes 1.3 times the scale of the last change.
+    /// Spread the fingers for larger items. The item under the fingers stays in place.
+    private func pinch(_ value: MagnifyGesture.Value, proxy: ScrollViewProxy) {
+        let step = value.magnification > pinchScale * 1.3 ? -1 : value.magnification < pinchScale / 1.3 ? 1 : 0
+        let index = (Self.columnCounts.firstIndex(of: columnCount) ?? 1) + step
+        guard step != 0, Self.columnCounts.indices.contains(index), !store.items.isEmpty else { return }
+        pinchScale = value.magnification
+        // The cells are squares with a spacing of 2 points, so a row and a column have the same size.
+        let size = (gridFrame.width + 2) / CGFloat(columnCount)
+        let row = max(0, Int((value.startLocation.y - gridFrame.minY) / size))
+        let column = min(max(0, Int((value.startLocation.x - gridFrame.minX) / size)), columnCount - 1)
+        let item = store.items[min(row * columnCount + column, store.items.count - 1)]
+        columnCount = Self.columnCounts[index]
+        // The anchor is the same unit point in the item and in the scroll view, so the item stays under the fingers.
+        // No animation: the grid does not animate the new columns, and an animated scroll moves through many rows.
+        proxy.scrollTo(item.id, anchor: value.startAnchor)
+    }
 }
 
 /// The settings page. It opens from the vault menu.
@@ -142,6 +177,7 @@ private struct SettingsView: View {
 
 private struct Thumbnail: View {
     let item: VaultItem
+    let maxPixelSize: Int
     @State private var image: UIImage?
     /// The file cannot open: corrupt, or from a lost key.
     @State private var failed = false
@@ -163,8 +199,9 @@ private struct Thumbnail: View {
             }
             .clipped()
             .contentShape(Rectangle())
-            .task {
-                let image = await VaultStore.thumbnail(for: item.url)
+            // A new column count loads the image again at the new size. The cell shows the old image until then.
+            .task(id: maxPixelSize) {
+                let image = await VaultStore.thumbnail(for: item.url, maxPixelSize: maxPixelSize)
                 // A cell that scrolls away cancels the task. Keep its state empty.
                 guard !Task.isCancelled else { return }
                 self.image = image

@@ -28,7 +28,7 @@ let thumbnailDirectory: URL = {
 func thumbnailURL(for url: URL) -> URL { thumbnailDirectory.appending(path: url.lastPathComponent + ".thumb") }
 
 /// The long side of a grid thumbnail in pixels: the cell side of 150 points at scale 3.
-private let thumbnailPixels = 450
+let thumbnailPixels = 450
 
 private let imageQueue: OperationQueue = {
     let queue = OperationQueue()
@@ -52,15 +52,15 @@ private func onImageQueue<T>(_ work: @escaping (SymmetricKey) -> T?) async -> T?
     } onCancel: { cancelled.withLock { $0 = true } }
 }
 
-/// Opens and decodes a thumbnail file. Nil when the file is missing or does not open.
-private func readThumbnail(_ file: URL, key: SymmetricKey) -> UIImage? {
+/// Opens a thumbnail file and decodes it at not more than `maxPixelSize`. Nil when the file is missing or does not open.
+private func readThumbnail(_ file: URL, key: SymmetricKey, maxPixelSize: Int) -> UIImage? {
     guard let jpeg = try? VaultCrypto.openThumbnail(file, master: key) else { return nil }
-    return VaultCrypto.decodeImage(jpeg, maxPixelSize: thumbnailPixels)
+    return VaultCrypto.decodeImage(jpeg, maxPixelSize: maxPixelSize)
 }
 
-/// Writes `image` as a JPEG to the thumbnail file and returns the decoded JPEG, which keeps no decrypted original in memory.
-/// A failed write is not an error, because the next call tries again.
-private func writeThumbnail(_ image: UIImage, to file: URL, key: SymmetricKey) -> UIImage? {
+/// Writes `image` as a JPEG to the thumbnail file and returns the JPEG decoded at not more than `maxPixelSize`.
+/// The result keeps no decrypted original in memory. A failed write is not an error, because the next call tries again.
+private func writeThumbnail(_ image: UIImage, to file: URL, key: SymmetricKey, maxPixelSize: Int) -> UIImage? {
     // An image from ImageIO decodes the photo again at each render, and `jpegData` renders it two times.
     // So draw it one time. On the simulator, a 12 MP HEIC photo then costs one render of 70 ms, not two.
     let format = UIGraphicsImageRendererFormat()
@@ -69,7 +69,7 @@ private func writeThumbnail(_ image: UIImage, to file: URL, key: SymmetricKey) -
     let bitmap = UIGraphicsImageRenderer(size: image.size, format: format).image { _ in image.draw(at: .zero) }
     guard let jpeg = bitmap.jpegData(compressionQuality: 0.8) else { return nil }
     try? VaultCrypto.sealThumbnail(jpeg, to: file, master: key)
-    return VaultCrypto.decodeImage(jpeg, maxPixelSize: thumbnailPixels)
+    return VaultCrypto.decodeImage(jpeg, maxPixelSize: maxPixelSize)
 }
 
 struct VaultItem: Identifiable, Hashable {
@@ -117,15 +117,16 @@ struct VaultItem: Identifiable, Hashable {
         reload()
     }
 
-    /// The grid thumbnail of a photo or a video: a JPEG of not more than 450 pixels from the thumbnail file.
-    /// Makes the thumbnail file when it is missing or does not open. Nil when the vault file cannot open.
-    static func thumbnail(for url: URL) async -> UIImage? {
+    /// The grid thumbnail of a photo or a video: the JPEG of not more than 450 pixels from the thumbnail file, decoded at not more
+    /// than `maxPixelSize`. Makes the thumbnail file when it is missing or does not open. Nil when the vault file cannot open.
+    static func thumbnail(for url: URL, maxPixelSize: Int = thumbnailPixels) async -> UIImage? {
         let cacheKey = url.path as NSString
+        // The cache holds only full-size thumbnails, so a cached image is large enough for each request.
         if let cached = cache.object(forKey: cacheKey) { return cached }
         let file = thumbnailURL(for: url)
         let image: UIImage?
         if VaultItem(url: url).isVideo {
-            if let saved = await onImageQueue({ readThumbnail(file, key: $0) }) {
+            if let saved = await onImageQueue({ readThumbnail(file, key: $0, maxPixelSize: maxPixelSize) }) {
                 image = saved
             } else {
                 // The generator suspends and does not block a thread, so it needs no image queue.
@@ -136,20 +137,20 @@ struct VaultItem: Identifiable, Hashable {
                 let frame = try? await generator.image(at: .zero).image
                 withExtendedLifetime(loader) {}
                 guard let frame else { return nil }
-                image = await onImageQueue { writeThumbnail(UIImage(cgImage: frame), to: file, key: $0) }
+                image = await onImageQueue { writeThumbnail(UIImage(cgImage: frame), to: file, key: $0, maxPixelSize: maxPixelSize) }
             }
         } else {
             // One operation for the read, the decode, and the write. A second operation for the write would wait behind
             // the decodes of all other cells, and each waiting image would keep its decrypted original.
             image = await onImageQueue { key in
-                if let saved = readThumbnail(file, key: key) { return saved }
+                if let saved = readThumbnail(file, key: key, maxPixelSize: maxPixelSize) { return saved }
                 guard let data = try? VaultCrypto.decryptAll(url, key: key),
                       let decoded = VaultCrypto.decodeImage(data, maxPixelSize: thumbnailPixels) else { return nil }
-                return writeThumbnail(decoded, to: file, key: key)
+                return writeThumbnail(decoded, to: file, key: key, maxPixelSize: maxPixelSize)
             }
         }
         // A decrypt can finish after the lock. Do not put its image back into the empty cache.
-        if let image, Session.shared.masterKey != nil { cache.setObject(image, forKey: cacheKey) }
+        if let image, maxPixelSize >= thumbnailPixels, Session.shared.masterKey != nil { cache.setObject(image, forKey: cacheKey) }
         return image
     }
 

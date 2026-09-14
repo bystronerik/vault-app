@@ -34,6 +34,9 @@ Build from source:
    If Face ID fails, you can type the device passcode.
 6. To set the lock timeout, open the vault, tap the `...` menu, tap **Settings**, and tap **Lock Timeout**.
    The default is **Instant**.
+7. To change the number of items in a row, pinch the grid. Move two fingers apart for larger items.
+   Move two fingers together for smaller items. The grid shows 3, 5, or 15 items in a row.
+   The item under your fingers stays in place. The app keeps the last setting.
 
 There is no PIN recovery. If you forget the PIN, the vault files are lost.
 
