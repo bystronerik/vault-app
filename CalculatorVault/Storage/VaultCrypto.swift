@@ -179,6 +179,7 @@ enum VaultCrypto {
     // swiftlint:disable force_try
     static func selfTest() {
         func hex(_ key: SymmetricKey) -> String { key.withUnsafeBytes { $0.map { String(format: "%02x", $0) }.joined() } }
+        func bytes(_ hex: String) -> Data { Data(stride(from: 0, to: hex.count, by: 2).map { UInt8(hex.dropFirst($0).prefix(2), radix: 16)! }) }
         // RFC 7914 section 11, first 32 bytes.
         assert(hex(pbkdf2(pin: "passwd", salt: Data("salt".utf8), rounds: 1))
             == "55ac046e56e3089fec1691c22544b605f94185216dde0465e68b9d57c20dacbc")
@@ -217,6 +218,12 @@ enum VaultCrypto {
         try! handle.close()
         assert((try? decryptAll(sealed, key: key)) == nil)
         assert((try? decrypt(sealed, key: key, range: 1_100_000..<1_200_000)) != nil)
+
+        // A fixed version 1 file: master key bytes 00 to 1f, nonce prefix 01 to 08. A format change must still open it.
+        let master = SymmetricKey(data: Data(0..<32))
+        let v1 = dir.appending(path: "v1.jpg")
+        try! bytes("43564c5407000000000000000102030405060708fc2e0ec4e8648110ac742d0cd910a7db5a6bb00fe77168").write(to: v1)
+        assert(try! decryptAll(v1, key: master) == Data("v1 test".utf8))
     }
     // swiftlint:enable force_try
     #endif
