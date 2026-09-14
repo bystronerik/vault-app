@@ -4,10 +4,11 @@ import Foundation
 import ImageIO
 import UIKit
 
-/// AES-256-GCM for the vault files and the thumbnail files, and PBKDF2 for the PIN. System crypto only.
+/// AES-256-GCM for the vault files, the thumbnail files, and the database file, and PBKDF2 for the PIN. System crypto only.
 ///
-/// Keys: a PBKDF2 key of the PIN wraps the master key. HKDF-SHA256 derives the thumbnail key and the file wrap key
-/// from the master key. The file wrap key wraps the random file key of each version 2 vault file (AES key wrap, RFC 3394).
+/// Keys: a PBKDF2 key of the PIN wraps the master key. HKDF-SHA256 derives the thumbnail key, the database key, and the
+/// file wrap key from the master key. The file wrap key wraps the random file key of each version 2 vault file (AES key
+/// wrap, RFC 3394).
 /// Keychain item (77 bytes): version 1, 16-byte salt, AES-GCM sealed box of the master key (combined form).
 /// Vault file, version 2: `CVL2`, plaintext length (UInt64 LE), 8-byte nonce prefix, 40-byte wrapped file key, then
 /// chunks of 1 MiB plaintext stored as ciphertext + 16-byte tag under the file key. The nonce of chunk `i` is the
@@ -16,6 +17,7 @@ import UIKit
 /// Vault file, version 1 (read only): `CVLT`, the same first 20 bytes, no wrapped key, and chunks under the master key.
 /// Thumbnail file: a JPEG in the AES-GCM combined form (12-byte random nonce, ciphertext, 16-byte tag) under the
 /// thumbnail key. HKDF-SHA256 derives the thumbnail key from the master key.
+/// Database file: the bytes of the SQLite database in the same AES-GCM combined form under the database key.
 enum VaultCrypto {
     enum Failure: Error { case badFormat, locked, wrongPIN }
 
@@ -64,7 +66,7 @@ enum VaultCrypto {
         return try SymmetricKey(data: AES.GCM.open(box, using: pbkdf2(pin: pin, salt: item.dropFirst(1).prefix(16))))
     }
 
-    // MARK: Thumbnails
+    // MARK: Thumbnails and database
 
     /// A key for one use, derived from the master key. The app does not store it.
     private static func subkey(_ master: SymmetricKey, _ info: String) -> SymmetricKey {
@@ -73,13 +75,31 @@ enum VaultCrypto {
 
     /// Writes a thumbnail file: the AES-GCM combined form under the thumbnail key. Replaces an existing file.
     static func sealThumbnail(_ jpeg: Data, to url: URL, master: SymmetricKey) throws {
-        try AES.GCM.seal(jpeg, using: subkey(master, "CalculatorVault thumbnail")).combined!
-            .write(to: url, options: [.atomic, .completeFileProtection])
+        try seal(jpeg, to: url, key: subkey(master, "CalculatorVault thumbnail"))
     }
 
     /// Reads a thumbnail file. Throws when the file is missing or does not open.
     static func openThumbnail(_ url: URL, master: SymmetricKey) throws -> Data {
-        try AES.GCM.open(AES.GCM.SealedBox(combined: Data(contentsOf: url)), using: subkey(master, "CalculatorVault thumbnail"))
+        try open(url, key: subkey(master, "CalculatorVault thumbnail"))
+    }
+
+    /// Writes the database file: the AES-GCM combined form under the database key. Replaces an existing file.
+    static func sealDatabase(_ bytes: Data, to url: URL, master: SymmetricKey) throws {
+        try seal(bytes, to: url, key: subkey(master, "CalculatorVault database"))
+    }
+
+    /// Reads the database file. Throws when the file is missing or does not open.
+    static func openDatabase(_ url: URL, master: SymmetricKey) throws -> Data {
+        try open(url, key: subkey(master, "CalculatorVault database"))
+    }
+
+    /// Writes the AES-GCM combined form. The atomic write keeps the previous file if the app stops during the write.
+    private static func seal(_ plaintext: Data, to url: URL, key: SymmetricKey) throws {
+        try AES.GCM.seal(plaintext, using: key).combined!.write(to: url, options: [.atomic, .completeFileProtection])
+    }
+
+    private static func open(_ url: URL, key: SymmetricKey) throws -> Data {
+        try AES.GCM.open(AES.GCM.SealedBox(combined: Data(contentsOf: url)), using: key)
     }
 
     // MARK: Files
@@ -248,15 +268,17 @@ enum VaultCrypto {
         assert((try? decryptAll(sealed, key: key)) == nil)
         assert((try? decrypt(sealed, key: key, range: 1_100_000..<1_200_000)) != nil)
 
-        // Fixed files: master key bytes 00 to 1f, file key bytes 20 to 3f, nonce prefix 01 to 08.
+        // Fixed files: master key bytes 00 to 1f, file key bytes 20 to 3f, nonce prefix 01 to 08, database nonce 01 to 0c.
         // A change of the HKDF info, the header layout, or the additional authenticated data makes them fail.
         let master = SymmetricKey(data: Data(0..<32))
-        let v1 = dir.appending(path: "v1.jpg"), v2 = dir.appending(path: "v2.jpg")
+        let v1 = dir.appending(path: "v1.jpg"), v2 = dir.appending(path: "v2.jpg"), database = dir.appending(path: "database")
         try! bytes("43564c5407000000000000000102030405060708fc2e0ec4e8648110ac742d0cd910a7db5a6bb00fe77168").write(to: v1)
         assert(try! decryptAll(v1, key: master) == Data("v1 test".utf8))
         try! bytes("43564c3207000000000000000102030405060708e70688b971db6407c7b727d9a032202c508f5947f81b88b07e"
             + "1455874ac5d32a7543d77127acdfe31ec2cd24e5c0435c94014f304d00112cd36b70f787e459").write(to: v2)
         assert(try! decryptAll(v2, key: master) == Data("v2 test".utf8))
+        try! bytes("0102030405060708090a0b0caadb465f2426cf4fd5de1d0c52ed0df4106dee0552131dc6f4cc65b429").write(to: database)
+        assert(try! openDatabase(database, master: master) == Data("database test".utf8))
     }
     // swiftlint:enable force_try
     #endif

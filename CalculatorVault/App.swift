@@ -31,6 +31,7 @@ struct CalculatorVaultApp: App {
         #if DEBUG
         CalculatorEngine.selfTest()
         VaultCrypto.selfTest()
+        VaultDatabase.selfTest()
         #endif
     }
 

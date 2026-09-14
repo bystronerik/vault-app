@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		CAFE0000000000000000001D /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = CAFE0000000000000000001C /* GRDB */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		CAFE00000000000000000016 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -39,6 +43,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CAFE0000000000000000001D /* GRDB in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -90,6 +95,7 @@
 			);
 			name = CalculatorVault;
 			packageProductDependencies = (
+				CAFE0000000000000000001C /* GRDB */,
 			);
 			productName = CalculatorVault;
 			productReference = CAFE00000000000000000005 /* CalculatorVault.app */;
@@ -146,6 +152,9 @@
 			);
 			mainGroup = CAFE00000000000000000003;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				CAFE0000000000000000001B /* XCRemoteSwiftPackageReference "GRDB" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = CAFE00000000000000000004 /* Products */;
 			projectDirPath = "";
@@ -439,6 +448,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		CAFE0000000000000000001B /* XCRemoteSwiftPackageReference "GRDB" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/groue/GRDB.swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 7.11.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		CAFE0000000000000000001C /* GRDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CAFE0000000000000000001B /* XCRemoteSwiftPackageReference "GRDB" */;
+			productName = GRDB;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = CAFE0000000000000000000A /* Project object */;
 }
