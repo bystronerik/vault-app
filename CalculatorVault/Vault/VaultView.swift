@@ -120,6 +120,11 @@ private struct SettingsView: View {
         Form {
             Button(.settingsChangePIN) { changingPIN = true }
             Toggle(.settingsFaceID, isOn: $faceID)
+                .onChange(of: faceID) { _, on in
+                    // Ask for the Face ID permission now, not at the next unlock. Turn the switch off if Face ID fails.
+                    guard on else { return }
+                    Task { if await !CalculatorView.faceIDPasses(reason: .settingsFaceIDReason) { faceID = false } }
+                }
             Picker(.lockTimeoutLabel, selection: $lockTimeout) {
                 Text(.lockTimeoutOptionInstant).tag(0)
                 Text(.lockTimeoutOptionOneMinute).tag(60)

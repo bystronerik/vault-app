@@ -301,6 +301,18 @@
         }
       }
     },
+    "settings.faceID.reason" : {
+      "comment" : "Reason in the passcode sheet after Face ID fails, when the user turns on the Face ID switch in Settings.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turn on Face ID"
+          }
+        }
+      }
+    },
     "settings.title" : {
       "comment" : "Name of the settings page. Shows as the page title and as the menu item that opens the page.",
       "extractionState" : "manual",

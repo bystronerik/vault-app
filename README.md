@@ -29,7 +29,8 @@ Build from source:
    See [Lock behavior](#lock-behavior).
 4. To change the PIN, open the vault, tap the `...` menu, tap **Settings**, and tap **Change PIN**.
 5. To use Face ID, open the vault, tap the `...` menu, tap **Settings**, and turn on **Face ID**.
-   Face ID is off by default. When it is on, the app asks for Face ID after the correct PIN.
+   Face ID is off by default. When you turn it on, the app asks for Face ID immediately.
+   If you cancel, the switch goes off again. When it is on, the app asks for Face ID after the correct PIN.
    If Face ID fails, you can type the device passcode.
 6. To set the lock timeout, open the vault, tap the `...` menu, tap **Settings**, and tap **Lock Timeout**.
    The default is **Instant**.
@@ -84,6 +85,8 @@ Code: `CalculatorVault/Security/` holds the PIN and Keychain code.
 ### Face ID
 
 - Face ID is off by default. The setting is in `UserDefaults`, so the device backup includes it.
+- When the user turns on the setting, the app runs the `deviceOwnerAuthentication` policy immediately. The first run shows the system
+  prompt for the Face ID permission. If the policy fails, the app turns off the setting.
 - When Face ID is on, the app runs the `deviceOwnerAuthentication` policy after a correct PIN.
   The vault opens only when the policy passes.
 - The system tries Face ID first. If Face ID fails, is locked, or is not set up, the system asks for the device passcode.

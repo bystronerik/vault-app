@@ -109,21 +109,21 @@ struct CalculatorView: View {
             if let key = PINStore.unlock(engine.display) {
                 // Clear the display first, so the PIN does not stay on the screen when Face ID fails.
                 engine = CalculatorEngine()
-                Task { if await faceIDPasses() { Session.shared.unlock(key) } }
+                guard faceID else { Session.shared.unlock(key); return }
+                Task { if await Self.faceIDPasses(reason: .calculatorUnlockReason) { Session.shared.unlock(key) } }
             } else {
                 engine.percent()
             }
         }
     }
 
-    /// True when Face ID is off. Otherwise Face ID, with the device passcode as the fallback for a broken Face ID.
+    /// Face ID, with the device passcode as the fallback for a broken Face ID.
     /// A device without a passcode has no Face ID, and only a person who knows the passcode can remove it.
     /// So the check passes there, and a restore to a device without a passcode can still open the vault.
-    private func faceIDPasses() async -> Bool {
-        guard faceID else { return true }
+    /// The first call shows the system prompt for the Face ID permission.
+    static func faceIDPasses(reason: LocalizedStringResource) async -> Bool {
         do {
-            let reason = String(localized: .calculatorUnlockReason)
-            return try await LAContext().evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason)
+            return try await LAContext().evaluatePolicy(.deviceOwnerAuthentication, localizedReason: String(localized: reason))
         } catch LAError.passcodeNotSet {
             return true
         } catch {
