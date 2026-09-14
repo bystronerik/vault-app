@@ -153,6 +153,36 @@ It also closes the viewer, the sheets, and the pickers with no animation.
 - Build the app as described in [Install](#install).
 - Open a pull request against `main`.
 
+### Performance tests
+
+The `CalculatorVaultTests` target measures how fast the app opens and shows large vaults.
+The tests use vaults with 1000, 2000, and 10 000 photos, and videos of 100 MB, 500 MB, and 1000 MB.
+They measure the time and the peak memory. They have no pass or fail limits, so a test fails only when a step fails.
+
+1. Create a new iPhone 17 simulator. Do not use a simulator that has your own test data.
+
+   ```bash
+   xcrun simctl create "CalculatorVault Tests" "iPhone 17"
+   ```
+
+2. Run the tests with the Release configuration, because the Debug configuration does not optimize the code.
+
+   ```bash
+   xcodebuild test -project CalculatorVault.xcodeproj -scheme CalculatorVault -destination "platform=iOS Simulator,name=CalculatorVault Tests" -configuration Release ENABLE_TESTABILITY=YES
+   ```
+
+3. Find the results in the output lines that contain `measured`.
+   The results of the run on 2026-09-14 are in [docs/performance-measurements.md](docs/performance-measurements.md).
+
+- Run time: about 15 minutes on a Mac with an Apple M3 Pro chip.
+  The first run on a new simulator takes about 5 minutes more, because the tests make the test videos.
+- Free disk space: 4 GB. The test videos use 1.6 GB. They stay in `Library/Caches` of the app for the next runs.
+  The tests delete all other test files at the end.
+- Free memory: 4 GB. The full pass over the thumbnails stops when the app uses 4 GB,
+  because a pass over 10 000 photos needs about 30 GB.
+- The tests keep all test files in a temporary directory.
+  They do not read, write, or delete the files in `Application Support/Vault/`.
+
 ## Report a security issue
 
 Do not open a public issue for a vulnerability.

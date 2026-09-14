@@ -23,18 +23,21 @@ struct VaultItem: Identifiable, Hashable {
 /// The directory listing is the model. File names sort in import order.
 @MainActor @Observable final class VaultStore {
     private(set) var items: [VaultItem] = []
+    /// The directory that the store lists. The performance tests use a temporary directory.
+    let directory: URL
     /// Decrypted thumbnails and previews. `Session.lock` empties it.
     static let cache = NSCache<NSString, UIImage>()
 
-    init() {
+    init(directory: URL = vaultDirectory) {
+        self.directory = directory
         // A crash or a lock during an import leaves a `.part` file. Delete it at the vault open.
-        let all = (try? FileManager.default.contentsOfDirectory(at: vaultDirectory, includingPropertiesForKeys: nil)) ?? []
+        let all = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
         for url in all where url.pathExtension == "part" { try? FileManager.default.removeItem(at: url) }
         reload()
     }
 
     func reload() {
-        let urls = (try? FileManager.default.contentsOfDirectory(at: vaultDirectory, includingPropertiesForKeys: nil,
+        let urls = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil,
                                                                  options: .skipsHiddenFiles)) ?? []
         items = urls.sorted { $0.lastPathComponent < $1.lastPathComponent }.map(VaultItem.init)
     }
