@@ -7,12 +7,19 @@ struct CalculatorVaultApp: App {
     init() {
         // The Keychain survives a reinstall. Clear it on the first launch after an install, unless a restored vault
         // exists. Check the path without `vaultDirectory`, because that global creates the directory.
+        let vault = URL.applicationSupportDirectory.appending(path: "Vault")
         if !UserDefaults.standard.bool(forKey: "installed") {
-            if !FileManager.default.fileExists(atPath: URL.applicationSupportDirectory.appending(path: "Vault").path) {
+            if !FileManager.default.fileExists(atPath: vault.path) {
                 PINStore.delete()
             }
             UserDefaults.standard.set(true, forKey: "installed")
         }
+        // A stopped import leaves a `.part` file. No import runs at launch, so the sweep cannot delete a running import.
+        for name in (try? FileManager.default.contentsOfDirectory(atPath: vault.path)) ?? [] where name.hasSuffix(".part") {
+            try? FileManager.default.removeItem(at: vault.appending(path: name))
+        }
+        // The plaintext share copies of a stopped app.
+        try? FileManager.default.removeItem(at: shareDirectory)
         #if DEBUG
         CalculatorEngine.selfTest()
         VaultCrypto.selfTest()

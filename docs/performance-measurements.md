@@ -171,5 +171,6 @@ A sort that gets each name one time took 94 ms.
 - The player item has an `AVPlayerItemVideoOutput`, because `VideoPlayer` shows the frames in the app.
   Without a video output, a seek completed in 0.4 ms and loaded no data.
 - The tests set `Session.shared.unlocked` to false after `Session.shared.unlock`.
-  If they do not, the host app opens `VaultView`, which reads `Application Support/Vault/` and deletes the `.part` files there.
-  A test on a separate simulator with a PIN and a `.part` file confirmed this.
+  If they do not, the host app opens `VaultView`, which reads `Application Support/Vault/`.
+  When these measurements were made, `VaultView` also deleted the `.part` files there. A test on a separate simulator with a PIN and a `.part` file confirmed this.
+  Now the launch of the app deletes the `.part` files, before the tests start.

@@ -58,7 +58,7 @@ The app does not protect against:
 - with a lock timeout other than **Instant**, a person who holds the unlocked phone before the lock timeout ends.
 
 A hidden vault is not a substitute for the device passcode and iOS data protection.
-The share copy in `tmp/share/` is plaintext until the next lock.
+The share copy in `tmp/share/` is plaintext until the next lock or the next launch of the app.
 
 Use a device passcode, a long PIN, and Advanced Data Protection on the iCloud account.
 
@@ -103,7 +103,7 @@ Code: `CalculatorVault/Security/` holds the PIN and Keychain code.
 - The vault files are in `Application Support/Vault/`. The directory and every file use `NSFileProtectionComplete`.
 - The app writes no plaintext copy. Thumbnails and photos come from ImageIO on decrypted data in memory.
   Videos play through an `AVAssetResourceLoader` delegate that decrypts byte ranges on demand.
-- Share is the one exception. It decrypts the item to `tmp/share/`. The app deletes that copy at the next lock.
+- Share is the one exception. It decrypts the item to `tmp/share/`. The app deletes that copy at the next lock and at the next launch.
 
 ### Lock behavior
 
@@ -263,6 +263,7 @@ They measure the time and the peak memory. They have no pass or fail limits, so 
   because a pass over 10 000 photos needs about 30 GB.
 - The tests keep all test files in a temporary directory.
   They do not read, write, or delete the files in `Application Support/Vault/`.
+  At launch, the host app removes leftover `.part` files in `Application Support/Vault/`.
 
 ## Report a security issue
 

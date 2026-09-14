@@ -11,7 +11,7 @@ let vaultDirectory: URL = {
     return dir
 }()
 
-/// tmp/share. Holds the plaintext copies for the share sheet. `Session.lock` removes it.
+/// tmp/share. Holds the plaintext copies for the share sheet. `Session.lock` and the app launch remove it.
 let shareDirectory = URL.temporaryDirectory.appending(path: "share")
 
 struct VaultItem: Identifiable, Hashable {
@@ -31,9 +31,6 @@ struct VaultItem: Identifiable, Hashable {
 
     init(directory: URL = vaultDirectory) {
         self.directory = directory
-        // A crash or a lock during an import leaves a `.part` file. Delete it at the vault open.
-        let all = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
-        for url in all where url.pathExtension == "part" { try? FileManager.default.removeItem(at: url) }
         reload()
     }
 
