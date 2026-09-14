@@ -292,7 +292,6 @@ They measure the time and the peak memory. They have no pass or fail limits, so 
    ```
 
 3. Find the results in the output lines that contain `measured`.
-   The results of the run on 2026-09-14 are in [docs/performance-measurements.md](docs/performance-measurements.md).
 
 - Run time: about 3 minutes on a Mac with an Apple M3 Pro chip.
   The first run on a new simulator takes about 5 minutes more, because the tests make the test videos.
