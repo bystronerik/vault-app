@@ -31,13 +31,13 @@ private func footprint() -> UInt64 {
 @MainActor final class VaultPerformanceTests: XCTestCase {
     private static var photos: [URL] = []
 
-    override nonisolated class func setUp() {
+    override nonisolated static func setUp() {
         super.setUp()
         try? FileManager.default.removeItem(at: root)
         try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     }
 
-    override nonisolated class func tearDown() {
+    override nonisolated static func tearDown() {
         try? FileManager.default.removeItem(at: root)
         super.tearDown()
     }
@@ -271,7 +271,7 @@ private func footprint() -> UInt64 {
     /// 10 different 12 MP photos of 2 to 4 MB, each encrypted once with `VaultCrypto.encrypt`.
     private func sealedPhotos() throws -> [URL] {
         guard Self.photos.isEmpty else { return Self.photos }
-        let type = (CGImageDestinationCopyTypeIdentifiers() as! [String]).contains(UTType.heic.identifier) ? UTType.heic : .jpeg
+        let type = (CGImageDestinationCopyTypeIdentifiers() as? [String] ?? []).contains(UTType.heic.identifier) ? UTType.heic : .jpeg
         if type != .heic { print("VaultPerformanceTests: This destination cannot encode HEIC. The photos are JPEG.") }
         let directory = root.appending(path: "photos")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -355,6 +355,7 @@ private func makePhoto(seed: UInt64) -> CGImage {
     let context = bitmap(width: 4_000, height: 3_000, gray: false)
     context.interpolationQuality = .high
     // Noise at a low resolution, scaled up, makes soft areas. Each finer layer adds texture.
+    // swiftlint:disable:next large_tuple
     let layers: [(width: Int, height: Int, alpha: CGFloat)] = [(6, 4, 1), (24, 18, 0.35), (100, 75, 0.25), (400, 300, 0.18), (1_600, 1_200, 0.12)]
     for (index, layer) in layers.enumerated() {
         context.setAlpha(layer.alpha)

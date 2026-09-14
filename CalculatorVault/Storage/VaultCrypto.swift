@@ -149,6 +149,7 @@ enum VaultCrypto {
     }
 
     #if DEBUG
+    // swiftlint:disable force_try
     static func selfTest() {
         func hex(_ key: SymmetricKey) -> String { key.withUnsafeBytes { $0.map { String(format: "%02x", $0) }.joined() } }
         // RFC 7914 section 11, first 32 bytes.
@@ -185,5 +186,6 @@ enum VaultCrypto {
         assert((try? decryptAll(sealed, key: key)) == nil)
         assert((try? decrypt(sealed, key: key, range: 1_100_000..<1_200_000)) != nil)
     }
+    // swiftlint:enable force_try
     #endif
 }

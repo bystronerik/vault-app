@@ -54,8 +54,8 @@ struct VaultItem: Identifiable, Hashable {
         reload()
     }
 
-    /// A downscaled image for photos and the first frame for videos. `side` is in points. Nil when the file cannot open.
     // ponytail: memory cache only, so every unlock regenerates thumbnails. Cache to disk if the grid feels slow with hundreds of items.
+    /// A downscaled image for photos and the first frame for videos. `side` is in points. Nil when the file cannot open.
     static func image(for url: URL, side: CGFloat, scale: CGFloat) async -> UIImage? {
         let key = "\(Int(side))|\(url.path)" as NSString
         if let cached = cache.object(forKey: key) { return cached }

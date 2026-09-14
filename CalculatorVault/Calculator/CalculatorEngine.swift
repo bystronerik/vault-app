@@ -88,8 +88,7 @@ struct CalculatorEngine {
         if pendingMul == nil, pendingAdd == nil {
             if let l = lastEquals { x = Self.apply(l.op, x, l.rhs) }
         } else {
-            if let m = pendingMul { lastEquals = (m.op, x); x = Self.apply(m.op, m.lhs, x) }
-            else if let a = pendingAdd { lastEquals = (a.op, x) }
+            if let m = pendingMul { lastEquals = (m.op, x); x = Self.apply(m.op, m.lhs, x) } else if let a = pendingAdd { lastEquals = (a.op, x) }
             if let a = pendingAdd { x = Self.apply(a.op, a.lhs, x) }
             pendingMul = nil
             pendingAdd = nil

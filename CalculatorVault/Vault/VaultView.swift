@@ -77,9 +77,9 @@ struct VaultView: View {
                 }
                 if selecting {
                     ToolbarItemGroup(placement: .bottomBar) {
-                        ShareLink(items: selected.map(VaultExport.init), preview: { SharePreview($0.item.url.lastPathComponent) }) {
+                        ShareLink(items: selected.map(VaultExport.init), preview: { SharePreview($0.item.url.lastPathComponent) }, label: {
                             Image(systemName: "square.and.arrow.up")
-                        }
+                        })
                         .disabled(selected.isEmpty)
                         Spacer()
                         Button("Delete", systemImage: "trash", role: .destructive) { deleting = selected; confirmDelete = true }
@@ -201,7 +201,7 @@ private struct PreviewPlayer: UIViewRepresentable {
 
 /// Plays a video in a loop, with sound and no controls. It plays only while it is in a window, so it stops when the menu closes.
 private final class PlayerView: UIView {
-    override class var layerClass: AnyClass { AVPlayerLayer.self }
+    override static var layerClass: AnyClass { AVPlayerLayer.self }
     private let url: URL
     /// The asset reads the file through the loader, and the looper repeats the item. Keep both while the player exists.
     private var loader: VaultResourceLoader?
@@ -217,7 +217,7 @@ private final class PlayerView: UIView {
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        let playerLayer = layer as! AVPlayerLayer
+        let playerLayer = layer as! AVPlayerLayer // swiftlint:disable:this force_cast
         if window == nil {
             playerLayer.player?.pause()
             playerLayer.player = nil

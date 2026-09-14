@@ -1,0 +1,15 @@
+included:
+  - CalculatorVault
+  - CalculatorVaultTests
+
+disabled_rules:
+  # Short names such as x, m, q, and Op are the style of this code.
+  - identifier_name
+  - type_name
+  # SwiftFormat adds trailing commas to multiline collections.
+  - trailing_comma
+  # "Master key" is the cryptography term that the code and the README use.
+  - inclusive_language
+
+line_length: 150
+file_length: 500
