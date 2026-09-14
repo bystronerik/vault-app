@@ -196,7 +196,16 @@ struct VaultExport: Transferable {
                                              attributes: [.protectionKey: FileProtectionType.complete]) else { throw VaultCrypto.Failure.badFormat }
         let output = try FileHandle(forWritingTo: dest)
         defer { try? output.close() }
-        try VaultCrypto.decrypt(item.url, key: key) { try output.write(contentsOf: $0) }
+        do {
+            try VaultCrypto.decrypt(item.url, key: key) {
+                guard Session.shared.masterKey != nil else { throw VaultCrypto.Failure.locked }
+                try output.write(contentsOf: $0)
+            }
+        } catch {
+            // Do not keep a partial plaintext copy until the next lock.
+            try? FileManager.default.removeItem(at: dest)
+            throw error
+        }
         return SentTransferredFile(dest)
     }
 }
