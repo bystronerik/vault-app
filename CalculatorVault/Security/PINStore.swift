@@ -40,12 +40,12 @@ enum PINStore {
         SecItemDelete(query as CFDictionary)
     }
 
+    /// Updates the item in place, so a stop during the write cannot lose the master key. Adds the item when it is missing.
     private static func write(_ item: Data) throws {
-        var q = query
-        q[kSecValueData as String] = item
-        q[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
-        delete()
-        let status = SecItemAdd(q as CFDictionary, nil)
+        let attributes: [String: Any] = [kSecValueData as String: item,
+                                         kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked]
+        var status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        if status == errSecItemNotFound { status = SecItemAdd(query.merging(attributes) { $1 } as CFDictionary, nil) }
         guard status == errSecSuccess else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(status)) }
     }
 
