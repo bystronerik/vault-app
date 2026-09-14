@@ -80,7 +80,7 @@ struct VaultView: View {
                         ShareLink(items: selected.map(VaultExport.init), preview: { SharePreview($0.item.url.lastPathComponent) }) {
                             Image(systemName: "square.and.arrow.up")
                         }
-                            .disabled(selected.isEmpty)
+                        .disabled(selected.isEmpty)
                         Spacer()
                         Button("Delete", systemImage: "trash", role: .destructive) { deleting = selected; confirmDelete = true }
                             .disabled(selected.isEmpty)
@@ -195,8 +195,8 @@ private struct ItemPreview: View {
 
 private struct PreviewPlayer: UIViewRepresentable {
     let url: URL
-    func makeUIView(context: Context) -> PlayerView { PlayerView(url: url) }
-    func updateUIView(_ view: PlayerView, context: Context) {}
+    func makeUIView(context _: Context) -> PlayerView { PlayerView(url: url) }
+    func updateUIView(_: PlayerView, context _: Context) {}
 }
 
 /// Plays a video in a loop, with sound and no controls. It plays only while it is in a window, so it stops when the menu closes.
@@ -213,7 +213,7 @@ private final class PlayerView: UIView {
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) { nil }
+    required init?(coder _: NSCoder) { nil }
 
     override func didMoveToWindow() {
         super.didMoveToWindow()

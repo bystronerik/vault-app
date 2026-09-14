@@ -31,18 +31,18 @@ private func footprint() -> UInt64 {
 @MainActor final class VaultPerformanceTests: XCTestCase {
     private static var photos: [URL] = []
 
-    nonisolated override class func setUp() {
+    override nonisolated class func setUp() {
         super.setUp()
         try? FileManager.default.removeItem(at: root)
         try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     }
 
-    nonisolated override class func tearDown() {
+    override nonisolated class func tearDown() {
         try? FileManager.default.removeItem(at: root)
         super.tearDown()
     }
 
-    nonisolated override func setUp() {
+    override nonisolated func setUp() {
         super.setUp()
         Session.shared.unlock(key)
         // `unlock` sets `unlocked`, and then the host app opens `VaultView`, which reads `vaultDirectory`.
@@ -52,7 +52,7 @@ private func footprint() -> UInt64 {
         Session.shared.paused = true
     }
 
-    nonisolated override func tearDown() {
+    override nonisolated func tearDown() {
         MainActor.assumeIsolated { VaultStore.cache.removeAllObjects() }
         super.tearDown()
     }
@@ -85,7 +85,7 @@ private func footprint() -> UInt64 {
     /// The calls run one at a time. When the 18 calls run at the same time, the HEIC decoder blocks all threads of the
     /// Swift concurrency pool on the simulator, and no call completes.
     private func measureFirstScreen(count: Int) throws {
-        let store = try autoreleasepool { VaultStore(directory: try photoDirectory(count: count)) }
+        let store = try autoreleasepool { try VaultStore(directory: photoDirectory(count: count)) }
         var result = (items: 0, failed: 0)
         measure(iterations: 5) {
             startMeasuring()
@@ -99,7 +99,7 @@ private func footprint() -> UInt64 {
     /// Full pass: the thumbnails of all items, one at a time. This is the worst case: a scroll to the end after an unlock.
     /// The pass stops at `memoryLimit`, and the test writes the number of items to the log.
     private func measureFullPass(count: Int) throws {
-        let store = try autoreleasepool { VaultStore(directory: try photoDirectory(count: count)) }
+        let store = try autoreleasepool { try VaultStore(directory: photoDirectory(count: count)) }
         var runs = 0, result = (items: 0, failed: 0)
         measure(iterations: 3) {
             runs += 1

@@ -85,8 +85,8 @@ private struct PhotoPage: View {
 
 private struct ZoomableImage: UIViewRepresentable {
     let image: UIImage?
-    func makeUIView(context: Context) -> ZoomScrollView { ZoomScrollView() }
-    func updateUIView(_ view: ZoomScrollView, context: Context) {
+    func makeUIView(context _: Context) -> ZoomScrollView { ZoomScrollView() }
+    func updateUIView(_ view: ZoomScrollView, context _: Context) {
         if view.image !== image { view.image = image }
     }
 }
@@ -114,7 +114,7 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) { nil }
+    required init?(coder _: NSCoder) { nil }
 
     override func layoutSubviews() {
         super.layoutSubviews()
@@ -133,8 +133,8 @@ final class ZoomScrollView: UIScrollView, UIScrollViewDelegate {
         contentInset = UIEdgeInsets(top: dy, left: dx, bottom: dy, right: dx)
     }
 
-    func viewForZooming(in scrollView: UIScrollView) -> UIView? { imageView }
-    func scrollViewDidZoom(_ scrollView: UIScrollView) { center() }
+    func viewForZooming(in _: UIScrollView) -> UIView? { imageView }
+    func scrollViewDidZoom(_: UIScrollView) { center() }
 
     @objc private func doubleTap(_ gesture: UITapGestureRecognizer) {
         if zoomScale > 1 {

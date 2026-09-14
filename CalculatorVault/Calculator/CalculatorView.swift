@@ -81,7 +81,7 @@ struct CalculatorView: View {
 
     private func label(_ key: Key) -> String {
         switch key {
-        case .digit(let d): d
+        case let .digit(d): d
         case .clear: engine.isCleared ? "AC" : "C"
         default: ""
         }
@@ -90,7 +90,7 @@ struct CalculatorView: View {
     private func colors(_ key: Key) -> (Color, Color) {
         switch key {
         case .clear, .sign, .percent: (Color(white: 0.65), .black)
-        case .op(let op) where engine.activeOp == op: (.white, Color(red: 1, green: 0.62, blue: 0.04))
+        case let .op(op) where engine.activeOp == op: (.white, Color(red: 1, green: 0.62, blue: 0.04))
         case .op, .equals: (Color(red: 1, green: 0.62, blue: 0.04), .white)
         case .digit: (Color(white: 0.2), .white)
         }
@@ -98,8 +98,8 @@ struct CalculatorView: View {
 
     private func press(_ key: Key) {
         switch key {
-        case .digit(let d): engine.digit(d)
-        case .op(let op): engine.operate(op)
+        case let .digit(d): engine.digit(d)
+        case let .op(op): engine.operate(op)
         case .clear: engine.clear()
         case .sign: engine.toggleSign()
         case .equals: engine.equals()

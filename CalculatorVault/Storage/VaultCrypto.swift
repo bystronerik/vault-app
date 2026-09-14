@@ -50,7 +50,7 @@ enum VaultCrypto {
     static func unwrap(_ item: Data, pin: String) throws -> SymmetricKey {
         guard isItem(item) else { throw Failure.badFormat }
         let box = try AES.GCM.SealedBox(combined: item.dropFirst(17))
-        return SymmetricKey(data: try AES.GCM.open(box, using: pbkdf2(pin: pin, salt: item.dropFirst(1).prefix(16))))
+        return try SymmetricKey(data: AES.GCM.open(box, using: pbkdf2(pin: pin, salt: item.dropFirst(1).prefix(16))))
     }
 
     // MARK: Files
@@ -85,7 +85,7 @@ enum VaultCrypto {
     static func plaintextLength(_ url: URL) throws -> UInt64 {
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
-        return length(of: try header(handle))
+        return try length(of: header(handle))
     }
 
     /// Decrypts `range` (nil: the whole file) and passes each piece to `body` in order. Reads only the chunks it needs.
@@ -153,9 +153,9 @@ enum VaultCrypto {
         func hex(_ key: SymmetricKey) -> String { key.withUnsafeBytes { $0.map { String(format: "%02x", $0) }.joined() } }
         // RFC 7914 section 11, first 32 bytes.
         assert(hex(pbkdf2(pin: "passwd", salt: Data("salt".utf8), rounds: 1))
-               == "55ac046e56e3089fec1691c22544b605f94185216dde0465e68b9d57c20dacbc")
+            == "55ac046e56e3089fec1691c22544b605f94185216dde0465e68b9d57c20dacbc")
         assert(hex(pbkdf2(pin: "Password", salt: Data("NaCl".utf8), rounds: 80_000))
-               == "4ddcd8f60b98be21830cee5ef22701f9641a4418d04c0414aeff08876b34ab56")
+            == "4ddcd8f60b98be21830cee5ef22701f9641a4418d04c0414aeff08876b34ab56")
 
         let key = SymmetricKey(size: .bits256)
         let item = try! wrap(key, pin: "1234")
@@ -180,7 +180,7 @@ enum VaultCrypto {
         try! handle.seek(toOffset: 40)
         let byte = try! handle.read(upToCount: 1)!
         try! handle.seek(toOffset: 40)
-        try! handle.write(contentsOf: Data([byte[0] ^ 0xff]))
+        try! handle.write(contentsOf: Data([byte[0] ^ 0xFF]))
         try! handle.close()
         assert((try? decryptAll(sealed, key: key)) == nil)
         assert((try? decrypt(sealed, key: key, range: 1_100_000..<1_200_000)) != nil)

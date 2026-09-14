@@ -26,7 +26,7 @@ struct CalculatorVaultApp: App {
 
 /// Attached to the window. Records every touch and then fails, so it never blocks other gestures.
 private final class TouchSpy: UIGestureRecognizer {
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+    override func touchesBegan(_ touches: Set<UITouch>, with _: UIEvent) {
         Session.shared.lastTouch = Date()
         if let view, let y = touches.first?.location(in: view).y {
             Session.shared.lastTouchAtBottom = y >= view.bounds.height - view.safeAreaInsets.bottom

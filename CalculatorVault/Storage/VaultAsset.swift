@@ -7,7 +7,7 @@ final class VaultResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
 
     init(url: URL) { self.url = url }
 
-    func resourceLoader(_ resourceLoader: AVAssetResourceLoader,
+    func resourceLoader(_: AVAssetResourceLoader,
                         shouldWaitForLoadingOfRequestedResource request: AVAssetResourceLoadingRequest) -> Bool {
         do {
             guard let key = Session.shared.masterKey else { throw VaultCrypto.Failure.locked }

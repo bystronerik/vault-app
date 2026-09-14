@@ -1,0 +1,11 @@
+--swift-version 6.3
+--language-mode 5
+--exclude build,DerivedData
+
+# Keep the compact style of the code: one-line bodies, 0..<n ranges, and #if without indent.
+--disable wrapFunctionBodies,wrapIfExpressionBodies,wrapIfStatementBodies,wrapLoopBodies,wrapPropertyBodies
+--disable wrapMultilineStatementBraces
+--ranges no-space
+--ifdef no-indent
+--decimal-grouping ignore
+--import-grouping testable-last
