@@ -1,5 +1,7 @@
 import AVFoundation
 import CryptoKit
+import GRDB
+import ImageIO
 import os
 import PhotosUI
 import SwiftUI
@@ -73,34 +75,40 @@ private func writeThumbnail(_ image: UIImage, to file: URL, key: SymmetricKey, m
 }
 
 struct VaultItem: Identifiable, Hashable {
+    /// The row id, a UUID string. The vault file has this name, and the thumbnail file has this name plus `.thumb`.
+    let id: String
     let url: URL
     /// The media type of the plaintext.
     let type: UTType
-    var id: URL { url }
+    /// The file name that the photo picker gave.
+    let originalFilename: String?
     var isVideo: Bool { type.conforms(to: .movie) }
+    /// The file name of the share copy.
+    var shareName: String { originalFilename ?? type.preferredFilenameExtension.map { "\(id).\($0)" } ?? id }
 }
 
-/// The directory listing is the model. File names sort in import order.
+/// The database of the open vault is the model. The newest capture date is first.
 @MainActor @Observable final class VaultStore {
     private(set) var items: [VaultItem] = []
-    /// The directory that the store lists. The performance tests use a temporary directory.
-    /// The thumbnail files are always in `thumbnailDirectory`.
-    let directory: URL
     // ponytail: count limit, not strict and not LRU. A removed thumbnail comes back from its file. Use totalCostLimit if the entry sizes differ.
     /// Decoded grid thumbnails, not more than 50. `Session.lock` empties it.
     static let cache = { let cache = NSCache<NSString, UIImage>(); cache.countLimit = 50; return cache }()
 
-    init(directory: URL = vaultDirectory) {
-        self.directory = directory
-        reload()
-    }
+    init() { reload() }
 
+    /// An item with no capture date sorts by its import date. `imported` and `id` keep the order of equal dates stable for the pager.
     func reload() {
-        let urls = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil,
-                                                                 options: .skipsHiddenFiles)) ?? []
-        // Get each name one time. `lastPathComponent` in the comparison made the sort 3 times slower.
-        items = urls.map { ($0.lastPathComponent, $0) }.sorted { $0.0 < $1.0 }
-            .map { VaultItem(url: $0.1, type: UTType(filenameExtension: $0.1.pathExtension) ?? .data) }
+        guard let database = Session.shared.database else { return items = [] }
+        items = (try? database.read { db in
+            try Array(Row.fetchCursor(db, sql: """
+            SELECT id, originalFilename, type FROM item
+            ORDER BY coalesce(created, imported) DESC, imported DESC, id
+            """).map { row in
+                let id: String = row["id"]
+                return VaultItem(id: id, url: database.directory.appending(path: id), type: UTType(row["type"] as String) ?? .data,
+                                 originalFilename: row["originalFilename"])
+            })
+        }) ?? []
     }
 
     func importItems(_ picks: [PhotosPickerItem]) async {
@@ -112,10 +120,14 @@ struct VaultItem: Identifiable, Hashable {
 
     func delete(_ toDelete: Set<VaultItem>) {
         // The thumbnail file goes first. If the app stops between the two removals, the grid makes the thumbnail again.
+        // The rows go last. If the app stops before, the grid shows the warning triangle, and a second delete removes the rows.
         for item in toDelete {
             try? FileManager.default.removeItem(at: thumbnailURL(for: item.url))
             try? FileManager.default.removeItem(at: item.url)
             Self.cache.removeObject(forKey: item.url.path as NSString)
+        }
+        try? Session.shared.database?.write { db in
+            for item in toDelete { try db.execute(sql: "DELETE FROM item WHERE id = ?", arguments: [item.id]) }
         }
         reload()
     }
@@ -166,19 +178,54 @@ struct VaultItem: Identifiable, Hashable {
     }
 }
 
-/// Encrypts a picked photo or video into the vault directory. The app writes no plaintext copy.
+/// Encrypts a picked photo or video into the vault directory and adds its row to the database. The app writes no plaintext copy.
 struct ImportedFile: Transferable {
     static var transferRepresentation: some TransferRepresentation {
-        FileRepresentation(importedContentType: .movie) { try Self(copying: $0.file) }
-        FileRepresentation(importedContentType: .image) { try Self(copying: $0.file) }
+        FileRepresentation(importedContentType: .movie) { try await Self(copying: $0.file, contentType: .movie) }
+        FileRepresentation(importedContentType: .image) { try await Self(copying: $0.file, contentType: .image) }
     }
 
-    init(copying source: URL) throws {
-        guard let key = Session.shared.masterKey else { throw VaultCrypto.Failure.locked }
-        let name = "\(Int(Date().timeIntervalSince1970 * 1000))-\(UUID().uuidString.prefix(8))"
-        let dest = vaultDirectory.appending(path: name).appendingPathExtension(source.pathExtension)
-        try VaultCrypto.encrypt(from: source, to: dest, key: key)
+    /// The insert of the row runs before the rename. If the insert or the save throws, no vault file stays without a row.
+    /// A lock during the import has the same result, because the write throws after the close.
+    init(copying source: URL, contentType: UTType) async throws {
+        guard let key = Session.shared.masterKey, let database = Session.shared.database else { throw VaultCrypto.Failure.locked }
+        let id = UUID().uuidString
+        // For an extension that the system does not know, UTType gives a dynamic type.
+        let type = UTType(filenameExtension: source.pathExtension).flatMap { $0.isDynamic ? nil : $0 } ?? contentType
+        let created = await Self.captureDate(of: source, isVideo: type.conforms(to: .movie))
+        try VaultCrypto.encrypt(from: source, to: database.directory.appending(path: id), key: key) {
+            try database.write { db in
+                try db.execute(sql: "INSERT INTO item (id, originalFilename, type, created, imported) VALUES (?, ?, ?, ?, ?)",
+                               arguments: [id, source.lastPathComponent, type.identifier, created, Date()])
+            }
+        }
     }
+
+    /// The EXIF DateTimeOriginal of a photo, or the creation date in the metadata of a video. Nil when it is missing or does not parse.
+    private static func captureDate(of source: URL, isVideo: Bool) async -> Date? {
+        if isVideo { return try? await AVURLAsset(url: source).load(.creationDate)?.load(.dateValue) }
+        guard let image = CGImageSourceCreateWithURL(source as CFURL, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(image, 0, nil) as? [CFString: Any],
+              let exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any],
+              let original = exif[kCGImagePropertyExifDateTimeOriginal] as? String else { return nil }
+        return exifDate(original, offset: exif[kCGImagePropertyExifOffsetTimeOriginal] as? String)
+    }
+
+    /// Parses an EXIF date, for example "2019:06:01 12:00:00" with the offset "+02:00". With no offset, the current time zone applies.
+    private static func exifDate(_ date: String, offset: String?) -> Date? {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = offset == nil ? "yyyy:MM:dd HH:mm:ss" : "yyyy:MM:dd HH:mm:ssXXXXX"
+        return formatter.date(from: date + (offset ?? ""))
+    }
+
+    #if DEBUG
+    static func selfTest() {
+        assert(exifDate("2019:06:01 12:00:00", offset: "+02:00") == Date(timeIntervalSince1970: 1_559_383_200))
+        assert(exifDate("2019:06:01 12:00:00", offset: nil) == Calendar.current.date(from: DateComponents(year: 2019, month: 6, day: 1, hour: 12)))
+        assert(exifDate("0000:00:00 00:00:00", offset: nil) == nil)
+    }
+    #endif
 }
 
 /// Decrypts an item to tmp/share for the share sheet. The mirror of `ImportedFile`.
@@ -192,9 +239,11 @@ struct VaultExport: Transferable {
 
     private func file() throws -> SentTransferredFile {
         guard let key = Session.shared.masterKey else { throw VaultCrypto.Failure.locked }
-        try FileManager.default.createDirectory(at: shareDirectory, withIntermediateDirectories: true,
+        // A directory for each item, so two items with the same original filename do not replace each other.
+        let directory = shareDirectory.appending(path: item.id)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
                                                 attributes: [.protectionKey: FileProtectionType.complete])
-        let dest = shareDirectory.appending(path: item.url.lastPathComponent)
+        let dest = directory.appending(path: item.shareName)
         try? FileManager.default.removeItem(at: dest)
         guard FileManager.default.createFile(atPath: dest.path, contents: nil,
                                              attributes: [.protectionKey: FileProtectionType.complete]) else { throw VaultCrypto.Failure.badFormat }

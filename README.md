@@ -1,7 +1,7 @@
 # CalculatorVault
 
 A native iOS calculator with a hidden photo and video vault.
-SwiftUI, iOS 18+, Xcode 26+.
+SwiftUI, iOS 18+, Xcode 26+. The app uses one third-party package, [GRDB](https://github.com/groue/GRDB.swift).
 
 Type the PIN on the calculator and press `%` to open the vault.
 
@@ -19,6 +19,7 @@ Build from source:
 
 1. Open `CalculatorVault.xcodeproj` in Xcode 26 or later.
 2. Run the `CalculatorVault` scheme on an iPhone with iOS 18 or later, or on a simulator.
+   Xcode downloads the GRDB package at the first build.
 
 ## Open the vault
 
@@ -43,7 +44,7 @@ There is no PIN recovery. If you forget the PIN, the vault files are lost.
 
 ## Threat model
 
-The app protects the vault files and the master key.
+The app protects the vault files, their metadata, and the master key.
 
 The app protects against:
 
@@ -62,6 +63,9 @@ The app does not protect against:
 - malware or a jailbroken device. Decrypted data is in memory while the vault is open.
 - with a lock timeout other than **Instant**, a person who holds the unlocked phone before the lock timeout ends.
 
+A person who reads the app files or the iCloud backup sees the number of vault files and their sizes.
+The sizes can show which items are videos. That person does not see the filenames, the dates, or the media types.
+
 A hidden vault is not a substitute for the device passcode and iOS data protection.
 The share copy in `tmp/share/` is plaintext until the next lock or the next launch of the app.
 
@@ -71,9 +75,10 @@ Use a device passcode, a long PIN, and Advanced Data Protection on the iCloud ac
 
 The app makes one random 256-bit master key. The PIN wraps the master key.
 Each vault file has its own random file key. The master key protects the file keys. The app never stores the PIN.
+An encrypted database holds the metadata of the vault items. The master key also protects the database.
 
 Code: `CalculatorVault/Security/` holds the PIN and Keychain code.
-`CalculatorVault/Storage/` holds the encryption and file code.
+`CalculatorVault/Storage/` holds the encryption, database, and file code.
 
 ### Key management
 
@@ -82,8 +87,9 @@ Code: `CalculatorVault/Security/` holds the PIN and Keychain code.
 - The Keychain item holds a version byte, the salt, and the wrapped master key.
 - A wrong PIN fails the AES-GCM tag check. Each try costs about 30 ms in the simulator on a Mac with an Apple M3 Pro chip.
   The PBKDF2 code comes from CommonCrypto. The attacker cost does not depend on the speed of this code.
-- Change PIN wraps the same master key under the new PIN. The vault files and the thumbnail files do not change.
-- The app derives the thumbnail key and the file wrap key from the master key with HKDF-SHA256. The app does not store them.
+- Change PIN wraps the same master key under the new PIN. The vault files, the thumbnail files, and the database file do not change.
+- The app derives the thumbnail key, the database key, and the file wrap key from the master key with HKDF-SHA256.
+  The app does not store them.
 - The file wrap key wraps the random 256-bit file key of each vault file with AES key wrap (RFC 3394).
 
 ### Face ID
@@ -107,20 +113,31 @@ Code: `CalculatorVault/Security/` holds the PIN and Keychain code.
 - A file with the length 0 has no chunks, so no tag checks its header.
 - The app also reads version 1 files. It writes only version 2 files.
   A version 1 file has the magic `CVLT`, no wrapped file key, and chunks under the master key.
+- A new vault file has the name `<id>` with no extension. `<id>` is a random UUID and the id of the row in the database.
 - The app writes to a hidden `.part` file and renames it when the write completes.
-  The file keeps its extension.
 - Thumbnail file: a JPEG of not more than 450 pixels on the long side, encrypted with AES-256-GCM under the thumbnail key.
   The file holds a 12-byte random nonce, the ciphertext, and a 16-byte tag.
   Its name is the name of the vault file plus `.thumb`. The grid makes it when the item first shows.
+- Database file: `Application Support/Vault/database`. It holds the bytes of the SQLite database in the form of a thumbnail file,
+  under the database key.
+- The database has one table, `item`. Each row holds the id, the original filename, the media type, the capture date, and
+  the import date of one vault item.
+- Each change of the database writes the whole database file again. The atomic write keeps the previous file if the app stops
+  during the write.
 
 ### Data at rest and in memory
 
 - Import uses the system `PhotosPicker`. The app does not request access to the photo library.
 - The vault files are in `Application Support/Vault/`. The directory and every file use `NSFileProtectionComplete`.
 - The grid thumbnails are encrypted files in `Library/Caches/Thumbnails/`, with the same protection.
+- The database file is in `Application Support/Vault/`. The metadata is in plaintext only in memory, and only while the vault is open.
+  SQLite keeps the database in memory, and it keeps its temporary data in memory too.
+- The app opens the database after the correct PIN and after the Face ID check.
+  If the database file does not open, the calculator shows Error, and the vault stays locked.
 - The app writes no plaintext copy. Photos come from ImageIO on decrypted data in memory.
   Videos play through an `AVAssetResourceLoader` delegate that decrypts byte ranges on demand.
-- Share is the one exception. It decrypts the item to `tmp/share/`. The app deletes that copy at the next lock and at the next launch.
+- Share is the one exception. It decrypts the item to `tmp/share/<id>/` and gives the copy the original filename.
+  The app deletes that copy at the next lock and at the next launch.
 
 ### Lock behavior
 
@@ -145,17 +162,18 @@ Voice Control can open the app switcher with no touch. Then the vault stays open
 or until 1 minute passes with no touch.
 
 When the app becomes inactive, a calculator view covers the window, so the app switcher does not show the vault.
-At the lock, the app clears the master key and empties the in-memory cache of decoded thumbnails.
-The encrypted thumbnail files stay on disk.
+At the lock, the app closes the database, clears the master key, and empties the in-memory cache of decoded thumbnails.
+The close waits for a running write. The encrypted thumbnail files stay on disk.
 It also closes the viewer, the sheets, and the pickers with no animation.
 
 ### Backup, restore, and reinstall
 
-- The iCloud device backup includes the vault files and the Keychain item. The app needs no entitlement.
+- The iCloud device backup includes the vault files, the database file, and the Keychain item. The app needs no entitlement.
 - The backup holds only ciphertext, the salt, and the wrapped master key.
 - The backup does not include the encrypted thumbnail files, because they are in `Library/Caches/`.
   After a restore, the grid makes them again. iOS can also delete them when storage is low.
-- Vault files from a backup of an older version open.
+- The app does not show the vault files from builds before the database, because the database has no rows for them.
+  The app does not delete them, so they stay in `Application Support/Vault/` and in the backup.
 - After a restore on a new device, type the same PIN and press `%`.
 - Advanced Data Protection on the iCloud account makes the backup end-to-end encrypted.
 - The Keychain survives a reinstall. The app clears the old item on the first launch after an install,
@@ -166,7 +184,7 @@ It also closes the viewer, the sheets, and the pickers with no animation.
 - `CalculatorVault/Calculator/` — calculator engine and view.
 - `CalculatorVault/Vault/` — gallery grid, settings page, and full-screen viewer.
 - `CalculatorVault/Security/` — Keychain PIN store and PIN setup form.
-- `CalculatorVault/Storage/` — vault directory, encryption, import, delete, thumbnails, video loader.
+- `CalculatorVault/Storage/` — vault directory, encryption, database, import, delete, thumbnails, video loader.
 
 ## Contributing
 
@@ -198,6 +216,7 @@ A Git pre-commit hook checks the Swift files and the String Catalogs before each
 - Run time: about 5 to 15 seconds for a commit that changes Swift files or String Catalogs. Other commits skip the checks.
 - The configuration is in `.swiftformat`, `.swiftlint.yml`, `.periphery.yml`, and `lefthook.yml`.
 - The hook builds the app into `build/periphery`. The default build cache of Periphery is the same for all clones of the project, and other clones cause false results.
+  The first hook build downloads the GRDB package into `build/periphery`.
 - When you commit part of a file, Lefthook removes the other changes of that file until the hook ends. Then it puts them back.
 - If Periphery reports code that the app uses, add `// periphery:ignore` to the declaration.
 - To skip the checks for one commit, use `git commit --no-verify`.
@@ -259,6 +278,7 @@ The calculator keys and the number on the display do not use the catalog.
 
 The `CalculatorVaultTests` target measures how fast the app opens and shows large vaults.
 The tests use vaults with 1000, 2000, and 10 000 photos, and videos of 100 MB, 500 MB, and 1000 MB.
+They also measure one save of databases with 1000, 2000, and 10 000 rows.
 They measure the time and the peak memory. They have no pass or fail limits, so a test fails only when a step fails.
 
 1. Create a new iPhone 17 simulator. Do not use a simulator that has your own test data.
@@ -294,6 +314,20 @@ Do not open a public issue for a vulnerability.
 Use **Report a vulnerability** on the Security tab of this repository.
 Include the iOS version, the steps, and the impact. You get a reply within 14 days.
 There is no bug bounty.
+
+## Third-party code
+
+The app includes [GRDB](https://github.com/groue/GRDB.swift). GRDB has this license:
+
+```text
+Copyright (C) 2015-2025 Gwendal Roué
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
 
 ## License
 

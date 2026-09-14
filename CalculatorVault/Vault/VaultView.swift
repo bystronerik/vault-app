@@ -51,7 +51,7 @@ struct VaultView: View {
                                 }
                                 .contextMenu {
                                     if !selecting {
-                                        ShareLink(item: VaultExport(item: item), preview: SharePreview(item.url.lastPathComponent))
+                                        ShareLink(item: VaultExport(item: item), preview: SharePreview(item.shareName))
                                         Button(.vaultDeleteButton, systemImage: "trash", role: .destructive) {
                                             deleting = [item]; confirmDelete = true
                                         }
@@ -97,7 +97,7 @@ struct VaultView: View {
                 }
                 if selecting {
                     ToolbarItemGroup(placement: .bottomBar) {
-                        ShareLink(items: selected.map(VaultExport.init), preview: { SharePreview($0.item.url.lastPathComponent) }, label: {
+                        ShareLink(items: selected.map(VaultExport.init), preview: { SharePreview($0.item.shareName) }, label: {
                             Image(systemName: "square.and.arrow.up")
                         })
                         .disabled(selected.isEmpty)

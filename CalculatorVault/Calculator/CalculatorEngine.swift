@@ -96,6 +96,9 @@ struct CalculatorEngine {
         show(x)
     }
 
+    /// Shows Error, as after a division by zero. The next digit clears it.
+    mutating func showError() { show(.nan) }
+
     /// "C" clears the entry. "AC" clears everything.
     mutating func clear() {
         if isCleared { clearAll() } else { display = "0"; typing = false; operatorJustPressed = false }

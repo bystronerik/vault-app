@@ -29,7 +29,7 @@ struct ItemViewer: View {
                     Button(.itemViewerClose, systemImage: "xmark") { dismiss() }
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    ShareLink(item: VaultExport(item: current), preview: SharePreview(current.url.lastPathComponent)) {
+                    ShareLink(item: VaultExport(item: current), preview: SharePreview(current.shareName)) {
                         Image(systemName: "square.and.arrow.up")
                     }
                     Button(.vaultDeleteButton, systemImage: "trash", role: .destructive) { confirmDelete = true }

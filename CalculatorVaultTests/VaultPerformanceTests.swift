@@ -29,7 +29,7 @@ private func footprint() -> UInt64 {
 
 /// Measures how fast the app opens and shows large vaults. The tests report numbers and have no pass or fail limits.
 @MainActor final class VaultPerformanceTests: XCTestCase {
-    private static var photos: [URL] = []
+    private static var photos: [VaultItem] = []
 
     override nonisolated static func setUp() {
         super.setUp()
@@ -45,14 +45,20 @@ private func footprint() -> UInt64 {
         super.tearDown()
     }
 
-    override nonisolated func setUp() {
-        super.setUp()
-        Session.shared.unlock(key)
-        // `unlock` sets `unlocked`, and then the host app opens `VaultView`, which reads `vaultDirectory`.
-        // The key stays set when `unlocked` is false, so the host app stays on its first screen.
-        Session.shared.unlocked = false
+    override nonisolated func setUpWithError() throws {
+        try super.setUpWithError()
+        // The database file is not written. The photo tests open the database of their directory.
+        try unlock(VaultDatabase(url: root.appending(path: "database"), key: key))
         // Stops the inactivity lock.
         Session.shared.paused = true
+    }
+
+    /// Puts the key and `database` into `Session`, as an unlock does. `unlock` sets `unlocked`, and then the host app opens
+    /// `VaultView`, which shows the items of the database. The key and the database stay set when `unlocked` is false, so the
+    /// host app stays on its first screen.
+    private nonisolated func unlock(_ database: VaultDatabase) {
+        Session.shared.unlock(key, database: database)
+        Session.shared.unlocked = false
     }
 
     override nonisolated func tearDown() {
@@ -72,22 +78,33 @@ private func footprint() -> UInt64 {
     func testFullPass2000() throws { try measureFullPass(count: 2_000) }
     func testFullPass10000() throws { try measureFullPass(count: 10_000) }
 
-    /// Open: `VaultStore` lists and sorts the files.
+    /// Open: `VaultDatabase` opens the database file, and `VaultStore` reads and sorts the rows.
     private func measureOpen(count: Int) throws {
-        let directory = try photoDirectory(count: count)
+        let url = try photoDirectory(count: count).appending(path: "database")
         var itemCount = 0
         measure(iterations: 5) {
+            // The database of the previous run closes before the measurement, as at a lock.
+            try? Session.shared.database?.close()
             startMeasuring()
-            itemCount = VaultStore(directory: directory).items.count
+            do {
+                try unlock(VaultDatabase(url: url, key: key))
+                itemCount = VaultStore().items.count
+            } catch { XCTFail("\(error)") }
             stopMeasuring()
         }
         XCTAssertEqual(itemCount, count)
     }
 
+    /// A store on the database of `photoDirectory(count:)`, as after an unlock.
+    private func openStore(count: Int) throws -> VaultStore {
+        try unlock(VaultDatabase(url: photoDirectory(count: count).appending(path: "database"), key: key))
+        return VaultStore()
+    }
+
     /// First screen: the thumbnails of the first 18 items at side 150 and scale 3, as `Thumbnail` on an iPhone 17.
     /// The 18 calls start at the same time, as the cells of the grid do.
     private func measureFirstScreen(count: Int) throws {
-        let store = try autoreleasepool { try VaultStore(directory: photoDirectory(count: count)) }
+        let store = try autoreleasepool { try openStore(count: count) }
         var result = (items: 0, failed: 0)
         measure(iterations: 5) {
             startMeasuring()
@@ -101,7 +118,7 @@ private func footprint() -> UInt64 {
     /// Full pass: the thumbnails of all items, one at a time, from the thumbnail files. This is a scroll to the end after an unlock.
     /// The pass stops at `memoryLimit`, and the test writes the number of items to the log.
     private func measureFullPass(count: Int) throws {
-        let store = try autoreleasepool { try VaultStore(directory: photoDirectory(count: count)) }
+        let store = try autoreleasepool { try openStore(count: count) }
         var runs = 0, result = (items: 0, failed: 0)
         measure(iterations: 3) {
             runs += 1
@@ -256,8 +273,9 @@ private func footprint() -> UInt64 {
         }
     }
 
-    /// A directory with `count` encrypted photos and their thumbnail files. The files are copies of 10 photos, with names
-    /// in the format of `ImportedFile`. On APFS, `copyItem` makes clones, so the copies use almost no disk space.
+    /// A directory with `count` encrypted photos, their thumbnail files, and a database with one row for each photo. The files
+    /// are copies of 10 photos, with UUID names as `ImportedFile` gives. On APFS, `copyItem` makes clones, so the copies use
+    /// almost no disk space.
     private func photoDirectory(count: Int) throws -> URL {
         let directory = root.appending(path: "photos-\(count)")
         if FileManager.default.fileExists(atPath: directory.path) { return directory }
@@ -265,18 +283,19 @@ private func footprint() -> UInt64 {
         try autoreleasepool {
             let photos = try sealedPhotos()
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            for index in 0..<count {
+            let ids = (0..<count).map { _ in UUID().uuidString }
+            for (index, id) in ids.enumerated() {
                 let photo = photos[index % photos.count]
-                let name = "\(1_757_800_000_000 + index)-\(UUID().uuidString.prefix(8)).\(photo.pathExtension)"
-                try FileManager.default.copyItem(at: photo, to: directory.appending(path: name))
-                try FileManager.default.copyItem(at: thumbnailURL(for: photo), to: thumbnailURL(for: directory.appending(path: name)))
+                try FileManager.default.copyItem(at: photo.url, to: directory.appending(path: id))
+                try FileManager.default.copyItem(at: thumbnailURL(for: photo.url), to: thumbnailURL(for: directory.appending(path: id)))
             }
+            try writeDatabase(ids: ids, type: photos[0].type, to: directory.appending(path: "database"))
         }
         return directory
     }
 
     /// 10 different 12 MP photos of 2 to 4 MB, each encrypted once with `VaultCrypto.encrypt`, and their thumbnail files.
-    private func sealedPhotos() throws -> [URL] {
+    private func sealedPhotos() throws -> [VaultItem] {
         guard Self.photos.isEmpty else { return Self.photos }
         let type = (CGImageDestinationCopyTypeIdentifiers() as? [String] ?? []).contains(UTType.heic.identifier) ? UTType.heic : .jpeg
         if type != .heic { print("VaultPerformanceTests: This destination cannot encode HEIC. The photos are JPEG.") }
@@ -287,10 +306,11 @@ private func footprint() -> UInt64 {
             XCTAssert((2 * megabyte...4 * megabyte).contains(data.count), "The photo has \(data.count) bytes.")
             let plain = directory.appending(path: "plain-\(index).\(type.preferredFilenameExtension!)")
             let sealed = directory.appending(path: "\(index).\(type.preferredFilenameExtension!)")
+            let photo = VaultItem(id: sealed.lastPathComponent, url: sealed, type: type, originalFilename: nil)
             try data.write(to: plain)
             try VaultCrypto.encrypt(from: plain, to: sealed, key: key)
-            XCTAssertNotNil(run { await VaultStore.thumbnail(for: VaultItem(url: sealed, type: type)) })
-            Self.photos.append(sealed)
+            XCTAssertNotNil(run { await VaultStore.thumbnail(for: photo) })
+            Self.photos.append(photo)
         }
         return Self.photos
     }
@@ -315,7 +335,46 @@ private func footprint() -> UInt64 {
         if !FileManager.default.fileExists(atPath: url.path) {
             try autoreleasepool { try VaultCrypto.encrypt(from: sourceVideo(megabytes: megabytes), to: url, key: key) }
         }
-        return VaultItem(url: url, type: .quickTimeMovie)
+        return VaultItem(id: url.lastPathComponent, url: url, type: .quickTimeMovie, originalFilename: nil)
+    }
+}
+
+// MARK: Database
+
+extension VaultPerformanceTests {
+    func testSave1000() throws { try measureSave(count: 1_000) }
+    func testSave2000() throws { try measureSave(count: 2_000) }
+    func testSave10000() throws { try measureSave(count: 10_000) }
+
+    /// Save: one `VaultDatabase.write` of one row, in a database with `count` rows. Each import and each delete adds this cost.
+    private func measureSave(count: Int) throws {
+        let url = root.appending(path: "save-\(count)")
+        try writeDatabase(ids: (0..<count).map { _ in UUID().uuidString }, type: .heic, to: url)
+        let database = try VaultDatabase(url: url, key: key)
+        measure(iterations: 5) {
+            startMeasuring()
+            do {
+                try database.write { db in
+                    try db.execute(sql: "INSERT INTO item (id, type, imported) VALUES (?, ?, ?)",
+                                   arguments: [UUID().uuidString, UTType.heic.identifier, Date()])
+                }
+            } catch { XCTFail("\(error)") }
+            stopMeasuring()
+        }
+    }
+
+    /// Writes a database with one row for each id. The capture dates are in a different order than the rows, so the sort has
+    /// work to do. Every 10th row has no capture date and sorts by its import date.
+    private func writeDatabase(ids: [String], type: UTType, to url: URL) throws {
+        let database = try VaultDatabase(url: url, key: key)
+        try database.write { db in
+            for (index, id) in ids.enumerated() {
+                let created = index % 10 == 0 ? nil : Date(timeIntervalSince1970: 1_500_000_000 + Double(index * 7_919 % ids.count) * 3_600)
+                try db.execute(sql: "INSERT INTO item (id, originalFilename, type, created, imported) VALUES (?, ?, ?, ?, ?)",
+                               arguments: [id, "IMG_\(index).\(type.preferredFilenameExtension!)", type.identifier, created, Date()])
+            }
+        }
+        try database.close()
     }
 }
 
@@ -323,7 +382,7 @@ extension VaultPerformanceTests {
     /// The first scroll after the update: 200 items with no thumbnail files. The calls start at the same time.
     /// Each run deletes the thumbnail files first. The peak memory shows if the cache keeps decrypted photos.
     func testNoThumbnails1000() throws {
-        let store = try autoreleasepool { try VaultStore(directory: photoDirectory(count: 1_000)) }
+        let store = try autoreleasepool { try openStore(count: 1_000) }
         let items = store.items.prefix(200)
         var result = (items: 0, failed: 0)
         measure(iterations: 3) {

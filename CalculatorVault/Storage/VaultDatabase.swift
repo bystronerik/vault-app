@@ -6,6 +6,8 @@ import SQLite3
 /// The metadata of the vault items. SQLite keeps the database in memory while the vault is open, and each write saves the
 /// whole database to one sealed file. See `VaultCrypto` for the file format.
 final class VaultDatabase: Sendable {
+    /// The directory of the database file. The vault files of the database are in this directory.
+    let directory: URL
     private let url: URL
     /// The saves need the master key. `Session.lock` closes the database.
     private let master: SymmetricKey
@@ -15,6 +17,7 @@ final class VaultDatabase: Sendable {
     /// Does not save, so the first write saves the schema.
     init(url: URL, key: SymmetricKey) throws {
         self.url = url
+        directory = url.deletingLastPathComponent()
         master = key
         var configuration = Configuration()
         // Without it, SQLite can write a plaintext temporary file to tmp/.

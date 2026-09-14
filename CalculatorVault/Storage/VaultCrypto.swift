@@ -104,8 +104,9 @@ enum VaultCrypto {
 
     // MARK: Files
 
-    /// Encrypts `source` in chunks to a hidden `.part` file, then renames it to `destination`. Writes version 2.
-    static func encrypt(from source: URL, to destination: URL, key: SymmetricKey) throws {
+    /// Encrypts `source` in chunks to a hidden `.part` file, runs `beforeRename`, and renames the file to `destination`.
+    /// Writes version 2. If a step throws, the function removes the `.part` file.
+    static func encrypt(from source: URL, to destination: URL, key: SymmetricKey, beforeRename: () throws -> Void = {}) throws {
         let input = try FileHandle(forReadingFrom: source)
         defer { try? input.close() }
         let length = try input.seekToEnd()
@@ -129,6 +130,7 @@ enum VaultCrypto {
                 index += 1
                 return true
             }) {}
+            try beforeRename()
             try FileManager.default.moveItem(at: part, to: destination)
         } catch {
             try? FileManager.default.removeItem(at: part)

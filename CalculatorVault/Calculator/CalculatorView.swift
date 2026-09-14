@@ -1,3 +1,4 @@
+import CryptoKit
 import LocalAuthentication
 import SwiftUI
 
@@ -109,11 +110,21 @@ struct CalculatorView: View {
             if let key = PINStore.unlock(engine.display) {
                 // Clear the display first, so the PIN does not stay on the screen when Face ID fails.
                 engine = CalculatorEngine()
-                guard faceID else { Session.shared.unlock(key); return }
-                Task { if await Self.faceIDPasses(reason: .calculatorUnlockReason) { Session.shared.unlock(key) } }
+                guard faceID else { openVault(key); return }
+                Task { if await Self.faceIDPasses(reason: .calculatorUnlockReason) { openVault(key) } }
             } else {
                 engine.percent()
             }
+        }
+    }
+
+    /// Opens the database and then the vault. It runs after the Face ID check, so the metadata is not in memory before the check.
+    /// If the database does not open, the display shows Error, and the vault stays locked.
+    private func openVault(_ key: SymmetricKey) {
+        do {
+            try Session.shared.unlock(key, database: VaultDatabase(url: vaultDirectory.appending(path: "database"), key: key))
+        } catch {
+            engine.showError()
         }
     }
 

@@ -32,6 +32,7 @@ struct CalculatorVaultApp: App {
         CalculatorEngine.selfTest()
         VaultCrypto.selfTest()
         VaultDatabase.selfTest()
+        ImportedFile.selfTest()
         #endif
     }
 
@@ -62,23 +63,28 @@ private final class TouchSpy: UIGestureRecognizer {
     /// True while the keyboard shows. It is in another window, so its touches do not reach the gesture recognizer.
     var keyboardShown = false
     @ObservationIgnored private let cover = UIHostingController(rootView: CalculatorView())
-    @ObservationIgnored private let key = OSAllocatedUnfairLock<SymmetricKey?>(initialState: nil)
+    @ObservationIgnored private let vault = OSAllocatedUnfairLock<(masterKey: SymmetricKey, database: VaultDatabase)?>(initialState: nil)
     /// The master key while the vault is open. Safe to read from any thread.
-    var masterKey: SymmetricKey? { key.withLock { $0 } }
+    var masterKey: SymmetricKey? { vault.withLock { $0?.masterKey } }
+    /// The database while the vault is open. Safe to read from any thread.
+    var database: VaultDatabase? { vault.withLock { $0?.database } }
 
-    func unlock(_ masterKey: SymmetricKey) {
-        key.withLock { $0 = masterKey }
+    func unlock(_ masterKey: SymmetricKey, database: VaultDatabase) {
+        vault.withLock { $0 = (masterKey, database) }
         lastTouch = Date()
         unlocked = true
     }
 
-    /// Clears the master key, so every decrypt stops, empties the image cache, and removes the plaintext share copies.
-    /// Closes the viewer, the sheets, and the pickers with no animation, so no closing screen shows the vault.
+    /// Closes the database and clears the master key, so every database access and every decrypt stops. Empties the image
+    /// cache and removes the plaintext share copies. Closes the viewer, the sheets, and the pickers with no animation, so no
+    /// closing screen shows the vault.
     @MainActor func lock() {
         unlocked = false
         // The vault view is gone, so the picker cannot clear this flag.
         paused = false
-        key.withLock { $0 = nil }
+        // The close waits for a running write.
+        try? database?.close()
+        vault.withLock { $0 = nil }
         window?.rootViewController?.dismiss(animated: false)
         VaultStore.cache.removeAllObjects()
         try? FileManager.default.removeItem(at: shareDirectory)
