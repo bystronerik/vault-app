@@ -206,24 +206,46 @@ struct ImportedFile: Transferable {
         if isVideo { return try? await AVURLAsset(url: source).load(.creationDate)?.load(.dateValue) }
         guard let image = CGImageSourceCreateWithURL(source as CFURL, nil),
               let properties = CGImageSourceCopyPropertiesAtIndex(image, 0, nil) as? [CFString: Any],
-              let exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any],
-              let original = exif[kCGImagePropertyExifDateTimeOriginal] as? String else { return nil }
-        return exifDate(original, offset: exif[kCGImagePropertyExifOffsetTimeOriginal] as? String)
+              let exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any] else { return nil }
+        return exifDate(exif, gps: properties[kCGImagePropertyGPSDictionary] as? [CFString: Any] ?? [:])
     }
 
-    /// Parses an EXIF date, for example "2019:06:01 12:00:00" with the offset "+02:00". With no offset, the current time zone applies.
-    private static func exifDate(_ date: String, offset: String?) -> Date? {
+    /// Parses DateTimeOriginal, a local time such as "2019:06:01 12:00:00". OffsetTimeOriginal, such as "+02:00", gives the
+    /// time zone. If it is missing or does not parse, the GPS time in UTC gives the offset. If that is missing, the current time
+    /// zone applies. SubsecTimeOriginal adds the fraction of the second, as the Photos app does.
+    private static func exifDate(_ exif: [CFString: Any], gps: [CFString: Any]) -> Date? {
+        guard let local = exif[kCGImagePropertyExifDateTimeOriginal] as? String else { return nil }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = offset == nil ? "yyyy:MM:dd HH:mm:ss" : "yyyy:MM:dd HH:mm:ssXXXXX"
-        return formatter.date(from: date + (offset ?? ""))
+        formatter.dateFormat = "yyyy:MM:dd HH:mm:ssXXXXX"
+        var date = (exif[kCGImagePropertyExifOffsetTimeOriginal] as? String).flatMap { formatter.date(from: local + $0) }
+        if date == nil, let asUTC = formatter.date(from: local + "Z"), let gpsDate = gps[kCGImagePropertyGPSDateStamp] as? String,
+           let gpsTime = gps[kCGImagePropertyGPSTimeStamp] as? String, let utc = formatter.date(from: "\(gpsDate) \(gpsTime.prefix(8))Z") {
+            // ponytail: a GPS fix that is more than 7.5 minutes older than the photo gives a wrong offset. The Photos app gets the
+            // time zone from the location, but iOS has no offline lookup for it.
+            let offset = (asUTC.timeIntervalSince(utc) / 900).rounded() * 900
+            if abs(offset) <= 14 * 3600 { date = asUTC - offset }
+        }
+        if date == nil {
+            formatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
+            date = formatter.date(from: local)
+        }
+        let subsecond = exif[kCGImagePropertyExifSubsecTimeOriginal] as? String
+        return date?.addingTimeInterval(subsecond.flatMap { Double("0." + $0.trimmingCharacters(in: .whitespaces)) } ?? 0)
     }
 
     #if DEBUG
     static func selfTest() {
-        assert(exifDate("2019:06:01 12:00:00", offset: "+02:00") == Date(timeIntervalSince1970: 1_559_383_200))
-        assert(exifDate("2019:06:01 12:00:00", offset: nil) == Calendar.current.date(from: DateComponents(year: 2019, month: 6, day: 1, hour: 12)))
-        assert(exifDate("0000:00:00 00:00:00", offset: nil) == nil)
+        let date = kCGImagePropertyExifDateTimeOriginal, offset = kCGImagePropertyExifOffsetTimeOriginal
+        assert(exifDate([date: "2019:06:01 12:00:00", offset: "+02:00"], gps: [:]) == Date(timeIntervalSince1970: 1_559_383_200))
+        // A blank offset does not parse. With no GPS time, the current time zone applies.
+        assert(exifDate([date: "2019:06:01 12:00:00", offset: "   :  "], gps: [:])
+            == Calendar.current.date(from: DateComponents(year: 2019, month: 6, day: 1, hour: 12)))
+        assert(exifDate([date: "0000:00:00 00:00:00"], gps: [:]) == nil)
+        // No offset: the GPS time 19:14:18 UTC gives the offset -07:00. The subsecond value adds 0.365 seconds.
+        let withGPS = exifDate([date: "2018:03:30 12:14:19", kCGImagePropertyExifSubsecTimeOriginal: "365"],
+                               gps: [kCGImagePropertyGPSDateStamp: "2018:03:30", kCGImagePropertyGPSTimeStamp: "19:14:18"])
+        assert(abs(withGPS!.timeIntervalSince1970 - 1_522_437_259.365) < 0.001)
     }
     #endif
 }
