@@ -74,8 +74,10 @@ private func writeThumbnail(_ image: UIImage, to file: URL, key: SymmetricKey, m
 
 struct VaultItem: Identifiable, Hashable {
     let url: URL
+    /// The media type of the plaintext.
+    let type: UTType
     var id: URL { url }
-    var isVideo: Bool { UTType(filenameExtension: url.pathExtension)?.conforms(to: .movie) ?? false }
+    var isVideo: Bool { type.conforms(to: .movie) }
 }
 
 /// The directory listing is the model. File names sort in import order.
@@ -97,7 +99,8 @@ struct VaultItem: Identifiable, Hashable {
         let urls = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil,
                                                                  options: .skipsHiddenFiles)) ?? []
         // Get each name one time. `lastPathComponent` in the comparison made the sort 3 times slower.
-        items = urls.map { ($0.lastPathComponent, $0) }.sorted { $0.0 < $1.0 }.map { VaultItem(url: $0.1) }
+        items = urls.map { ($0.lastPathComponent, $0) }.sorted { $0.0 < $1.0 }
+            .map { VaultItem(url: $0.1, type: UTType(filenameExtension: $0.1.pathExtension) ?? .data) }
     }
 
     func importItems(_ picks: [PhotosPickerItem]) async {
@@ -119,18 +122,18 @@ struct VaultItem: Identifiable, Hashable {
 
     /// The grid thumbnail of a photo or a video: the JPEG of not more than 450 pixels from the thumbnail file, decoded at not more
     /// than `maxPixelSize`. Makes the thumbnail file when it is missing or does not open. Nil when the vault file cannot open.
-    static func thumbnail(for url: URL, maxPixelSize: Int = thumbnailPixels) async -> UIImage? {
-        let cacheKey = url.path as NSString
+    static func thumbnail(for item: VaultItem, maxPixelSize: Int = thumbnailPixels) async -> UIImage? {
+        let cacheKey = item.url.path as NSString
         // The cache holds only full-size thumbnails, so a cached image is large enough for each request.
         if let cached = cache.object(forKey: cacheKey) { return cached }
-        let file = thumbnailURL(for: url)
+        let file = thumbnailURL(for: item.url)
         let image: UIImage?
-        if VaultItem(url: url).isVideo {
+        if item.isVideo {
             if let saved = await onImageQueue({ readThumbnail(file, key: $0, maxPixelSize: maxPixelSize) }) {
                 image = saved
             } else {
                 // The generator suspends and does not block a thread, so it needs no image queue.
-                let (asset, loader) = makeAsset(for: url)
+                let (asset, loader) = makeAsset(for: item)
                 let generator = AVAssetImageGenerator(asset: asset)
                 generator.appliesPreferredTrackTransform = true
                 generator.maximumSize = CGSize(width: thumbnailPixels, height: thumbnailPixels)
@@ -144,7 +147,7 @@ struct VaultItem: Identifiable, Hashable {
             // the decodes of all other cells, and each waiting image would keep its decrypted original.
             image = await onImageQueue { key in
                 if let saved = readThumbnail(file, key: key, maxPixelSize: maxPixelSize) { return saved }
-                guard let data = try? VaultCrypto.decryptAll(url, key: key),
+                guard let data = try? VaultCrypto.decryptAll(item.url, key: key),
                       let decoded = VaultCrypto.decodeImage(data, maxPixelSize: thumbnailPixels) else { return nil }
                 return writeThumbnail(decoded, to: file, key: key, maxPixelSize: maxPixelSize)
             }

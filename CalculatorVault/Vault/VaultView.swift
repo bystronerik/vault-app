@@ -204,7 +204,7 @@ private struct Thumbnail: View {
             .contentShape(Rectangle())
             // A new column count loads the image again at the new size. The cell shows the old image until then.
             .task(id: maxPixelSize) {
-                let image = await VaultStore.thumbnail(for: item.url, maxPixelSize: maxPixelSize)
+                let image = await VaultStore.thumbnail(for: item, maxPixelSize: maxPixelSize)
                 // A cell that scrolls away cancels the task. Keep its state empty.
                 guard !Task.isCancelled else { return }
                 self.image = image
@@ -227,7 +227,7 @@ private struct ItemPreview: View {
             // Size by the aspect ratio, not the pixels, so a low-resolution item does not show small.
             let fit = 400 / max(image.size.width, image.size.height)
             Image(uiImage: image).resizable().frame(width: image.size.width * fit, height: image.size.height * fit)
-                .overlay { if item.isVideo { PreviewPlayer(url: item.url) } }
+                .overlay { if item.isVideo { PreviewPlayer(item: item) } }
         } else {
             Color(.secondarySystemBackground)
                 .frame(width: 300, height: 300)
@@ -236,7 +236,7 @@ private struct ItemPreview: View {
                 }
                 .task {
                     // A video needs only its first frame, because the player covers it.
-                    image = await item.isVideo ? VaultStore.thumbnail(for: item.url)
+                    image = await item.isVideo ? VaultStore.thumbnail(for: item)
                         : VaultStore.image(for: item.url, maxPixelSize: Int(400 * scale))
                     failed = image == nil
                 }
@@ -245,21 +245,21 @@ private struct ItemPreview: View {
 }
 
 private struct PreviewPlayer: UIViewRepresentable {
-    let url: URL
-    func makeUIView(context _: Context) -> PlayerView { PlayerView(url: url) }
+    let item: VaultItem
+    func makeUIView(context _: Context) -> PlayerView { PlayerView(item: item) }
     func updateUIView(_: PlayerView, context _: Context) {}
 }
 
 /// Plays a video in a loop, with sound and no controls. It plays only while it is in a window, so it stops when the menu closes.
 private final class PlayerView: UIView {
     override static var layerClass: AnyClass { AVPlayerLayer.self }
-    private let url: URL
+    private let item: VaultItem
     /// The asset reads the file through the loader, and the looper repeats the item. Keep both while the player exists.
     private var loader: VaultResourceLoader? // periphery:ignore
     private var looper: AVPlayerLooper? // periphery:ignore
 
-    init(url: URL) {
-        self.url = url
+    init(item: VaultItem) {
+        self.item = item
         super.init(frame: .zero)
     }
 
@@ -275,7 +275,7 @@ private final class PlayerView: UIView {
             looper = nil
             loader = nil
         } else if playerLayer.player == nil {
-            let (asset, loader) = makeAsset(for: url)
+            let (asset, loader) = makeAsset(for: item)
             let player = AVQueuePlayer()
             // The SDK header gives this setting for a resource loader delegate that loads the media data.
             player.automaticallyWaitsToMinimizeStalling = false

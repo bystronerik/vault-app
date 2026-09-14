@@ -15,7 +15,7 @@ struct ItemViewer: View {
             TabView(selection: $current) {
                 ForEach(store.items) { item in
                     Group {
-                        if item.isVideo { VideoPage(url: item.url) } else { PhotoPage(url: item.url) }
+                        if item.isVideo { VideoPage(item: item) } else { PhotoPage(url: item.url) }
                     }
                     .tag(item)
                 }
@@ -52,14 +52,14 @@ struct ItemViewer: View {
 
 /// Plays through the resource loader. The loader stays in state so the asset can reach it.
 private struct VideoPage: View {
-    let url: URL
+    let item: VaultItem
     @State private var player: AVPlayer?
     @State private var loader: VaultResourceLoader?
 
     var body: some View {
         VideoPlayer(player: player)
             .onAppear {
-                let (asset, loader) = makeAsset(for: url)
+                let (asset, loader) = makeAsset(for: item)
                 self.loader = loader
                 let player = AVPlayer(playerItem: AVPlayerItem(asset: asset))
                 // The SDK header gives this setting for a resource loader delegate that loads the media data.
