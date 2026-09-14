@@ -52,7 +52,7 @@ The app does not protect against:
 
 - a person with the unlocked phone who finds the app on the home screen.
   The app looks like a calculator, but it does not hide that it exists.
-- a person who extracts the Keychain item and tries PINs offline. A 4-digit PIN has 10 000 values.
+- a person who extracts the Keychain item and tries PINs offline. A 4-digit PIN has 9 000 values.
   Face ID does not prevent this.
 - malware or a jailbroken device. Decrypted data is in memory while the vault is open.
 - with a lock timeout other than **Instant**, a person who holds the unlocked phone before the lock timeout ends.
@@ -75,7 +75,8 @@ Code: `CalculatorVault/Security/` holds the PIN and Keychain code.
 - The app derives a key from the PIN with PBKDF2-HMAC-SHA256, 200 000 rounds, and a random 16-byte salt.
 - The app wraps the master key with AES-256-GCM under the derived key.
 - The Keychain item holds a version byte, the salt, and the wrapped master key.
-- A wrong PIN fails the AES-GCM tag check. Each try costs about 0.2 s.
+- A wrong PIN fails the AES-GCM tag check. Each try costs about 30 ms in the simulator on a Mac with an Apple M3 Pro chip.
+  The PBKDF2 code comes from CommonCrypto. The attacker cost does not depend on the speed of this code.
 - Change PIN wraps the same master key under the new PIN. The vault files and the thumbnail files do not change.
 - The app derives the thumbnail key from the master key with HKDF-SHA256. The app does not store it.
 

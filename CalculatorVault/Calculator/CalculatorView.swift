@@ -104,7 +104,8 @@ struct CalculatorView: View {
         case .sign: engine.toggleSign()
         case .equals: engine.equals()
         case .percent:
-            // ponytail: the KDF runs on the main thread for about 0.2 s, only for a 4-to-8 digit display. Move it to a Task if the lag shows.
+            // ponytail: the KDF runs on the main thread, only for a 4-to-8 digit display. It took 28 ms on the simulator of an M3 Pro Mac.
+            // Measure it on the slowest test iPhone, and move it to a Task if the lag shows.
             if let key = PINStore.unlock(engine.display) {
                 // Clear the display first, so the PIN does not stay on the screen when Face ID fails.
                 engine = CalculatorEngine()
