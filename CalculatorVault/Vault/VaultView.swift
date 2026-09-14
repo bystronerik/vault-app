@@ -21,6 +21,8 @@ struct VaultView: View {
     /// The magnification at the last column change of the running pinch.
     @State private var pinchScale: CGFloat = 1
     @GestureState private var pinching = false
+    /// The viewer zooms from the cell of an item, and back to the cell of its current item.
+    @Namespace private var zoom
 
     var body: some View {
         NavigationStack {
@@ -30,6 +32,7 @@ struct VaultView: View {
                         ForEach(store.items) { item in
                             // The thumbnail file size for 3 columns. Smaller cells decode smaller images, so that 15 columns fill faster.
                             Thumbnail(item: item, maxPixelSize: thumbnailPixels * 3 / columnCount)
+                                .matchedTransitionSource(id: item.id, in: zoom)
                                 .opacity(selected.contains(item) ? 0.6 : 1)
                                 .overlay(alignment: .bottomTrailing) {
                                     if selecting {
@@ -120,7 +123,7 @@ struct VaultView: View {
                                 isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button(.vaultDeleteButton, role: .destructive) { store.delete(deleting); selected = []; selecting = false }
             }
-            .fullScreenCover(item: $viewing) { item in ItemViewer(store: store, current: item) }
+            .fullScreenCover(item: $viewing) { item in ItemViewer(store: store, current: item, zoom: zoom) }
             .navigationDestination(isPresented: $showingSettings) { SettingsView() }
         }
     }

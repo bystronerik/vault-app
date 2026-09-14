@@ -1,10 +1,12 @@
 import AVKit
 import SwiftUI
 
-/// Full-screen pager. Swipe between items, pinch to zoom photos, play videos.
+/// Full-screen pager. Swipe between items, pinch to zoom photos, play videos, swipe down to close.
 struct ItemViewer: View {
     let store: VaultStore
     @State var current: VaultItem
+    /// The namespace of the grid cells.
+    let zoom: Namespace.ID
     @State private var confirmDelete = false
     @Environment(\.dismiss) private var dismiss
 
@@ -37,6 +39,8 @@ struct ItemViewer: View {
                 Button(.vaultDeleteButton, role: .destructive) { delete() }
             }
         }
+        // The system zoom transition closes the viewer with a swipe down. It zooms back to the cell of the current item.
+        .navigationTransition(.zoom(sourceID: current.id, in: zoom))
     }
 
     private func delete() {

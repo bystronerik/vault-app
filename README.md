@@ -1,7 +1,7 @@
 # CalculatorVault
 
 A native iOS calculator with a hidden photo and video vault.
-SwiftUI, iOS 17+, Xcode 26+.
+SwiftUI, iOS 18+, Xcode 26+.
 
 Type the PIN on the calculator and press `%` to open the vault.
 
@@ -18,7 +18,7 @@ TestFlight: internal testers only. There is no public link yet.
 Build from source:
 
 1. Open `CalculatorVault.xcodeproj` in Xcode 26 or later.
-2. Run the `CalculatorVault` scheme on an iPhone with iOS 17 or later, or on a simulator.
+2. Run the `CalculatorVault` scheme on an iPhone with iOS 18 or later, or on a simulator.
 
 ## Open the vault
 
@@ -37,6 +37,7 @@ Build from source:
 7. To change the number of items in a row, pinch the grid. Move two fingers apart for larger items.
    Move two fingers together for smaller items. The grid shows 3, 5, or 15 items in a row.
    The item under your fingers stays in place. The app keeps the last setting.
+8. To close the viewer, swipe down on the item or tap the close button.
 
 There is no PIN recovery. If you forget the PIN, the vault files are lost.
 
