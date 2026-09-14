@@ -67,6 +67,7 @@ private struct VideoPage: View {
 }
 
 /// Decrypts the photo to memory and decodes it at not more than 4096 pixels on the long side.
+/// Shows the cached grid thumbnail first.
 private struct PhotoPage: View {
     let url: URL
     @State private var image: UIImage?
@@ -76,10 +77,12 @@ private struct PhotoPage: View {
         ZoomableImage(image: image)
             .overlay { if failed { Text(.itemViewerErrorCannotOpen).foregroundStyle(.secondary) } }
             .task {
-                let image = await VaultStore.image(for: url, maxPixelSize: 4096)
+                // The cache lookup reads no file and uses no queue.
+                if image == nil { image = VaultStore.cache.object(forKey: url.path as NSString) }
+                let full = await VaultStore.image(for: url, maxPixelSize: 4096)
                 guard !Task.isCancelled else { return }
-                self.image = image
-                failed = image == nil
+                image = full
+                failed = full == nil
             }
     }
 }

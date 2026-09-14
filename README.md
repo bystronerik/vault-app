@@ -76,7 +76,8 @@ Code: `CalculatorVault/Security/` holds the PIN and Keychain code.
 - The app wraps the master key with AES-256-GCM under the derived key.
 - The Keychain item holds a version byte, the salt, and the wrapped master key.
 - A wrong PIN fails the AES-GCM tag check. Each try costs about 0.2 s.
-- Change PIN wraps the same master key under the new PIN. The vault files do not change.
+- Change PIN wraps the same master key under the new PIN. The vault files and the thumbnail files do not change.
+- The app derives the thumbnail key from the master key with HKDF-SHA256. The app does not store it.
 
 ### Face ID
 
@@ -96,12 +97,16 @@ Code: `CalculatorVault/Security/` holds the PIN and Keychain code.
 - The header is the additional authenticated data of every chunk.
 - The app writes to a hidden `.part` file and renames it when the write completes.
   The file keeps its extension.
+- Thumbnail file: a JPEG of not more than 450 pixels on the long side, encrypted with AES-256-GCM under the thumbnail key.
+  The file holds a 12-byte random nonce, the ciphertext, and a 16-byte tag.
+  Its name is the name of the vault file plus `.thumb`. The grid makes it when the item first shows.
 
 ### Data at rest and in memory
 
 - Import uses the system `PhotosPicker`. The app does not request access to the photo library.
 - The vault files are in `Application Support/Vault/`. The directory and every file use `NSFileProtectionComplete`.
-- The app writes no plaintext copy. Thumbnails and photos come from ImageIO on decrypted data in memory.
+- The grid thumbnails are encrypted files in `Library/Caches/Thumbnails/`, with the same protection.
+- The app writes no plaintext copy. Photos come from ImageIO on decrypted data in memory.
   Videos play through an `AVAssetResourceLoader` delegate that decrypts byte ranges on demand.
 - Share is the one exception. It decrypts the item to `tmp/share/`. The app deletes that copy at the next lock and at the next launch.
 
@@ -128,13 +133,16 @@ Voice Control can open the app switcher with no touch. Then the vault stays open
 or until 1 minute passes with no touch.
 
 When the app becomes inactive, a calculator view covers the window, so the app switcher does not show the vault.
-At the lock, the app clears the master key and empties the in-memory cache of thumbnails and previews.
+At the lock, the app clears the master key and empties the in-memory cache of decoded thumbnails.
+The encrypted thumbnail files stay on disk.
 It also closes the viewer, the sheets, and the pickers with no animation.
 
 ### Backup, restore, and reinstall
 
 - The iCloud device backup includes the vault files and the Keychain item. The app needs no entitlement.
 - The backup holds only ciphertext, the salt, and the wrapped master key.
+- The backup does not include the encrypted thumbnail files, because they are in `Library/Caches/`.
+  After a restore, the grid makes them again. iOS can also delete them when storage is low.
 - After a restore on a new device, type the same PIN and press `%`.
 - Advanced Data Protection on the iCloud account makes the backup end-to-end encrypted.
 - The Keychain survives a reinstall. The app clears the old item on the first launch after an install,
@@ -255,15 +263,17 @@ They measure the time and the peak memory. They have no pass or fail limits, so 
 3. Find the results in the output lines that contain `measured`.
    The results of the run on 2026-09-14 are in [docs/performance-measurements.md](docs/performance-measurements.md).
 
-- Run time: about 15 minutes on a Mac with an Apple M3 Pro chip.
+- Run time: about 3 minutes on a Mac with an Apple M3 Pro chip.
   The first run on a new simulator takes about 5 minutes more, because the tests make the test videos.
 - Free disk space: 4 GB. The test videos use 1.6 GB. They stay in `Library/Caches` of the app for the next runs.
   The tests delete all other test files at the end.
-- Free memory: 4 GB. The full pass over the thumbnails stops when the app uses 4 GB,
-  because a pass over 10 000 photos needs about 30 GB.
-- The tests keep all test files in a temporary directory.
+- Free memory: 1 GB. In the run on 2026-09-14, the app used not more than 110 MB.
+  As a guard, the full pass over the thumbnails stops when the app uses 4 GB.
+- The tests keep the other test files in a temporary directory.
+  They also write thumbnail files to `Library/Caches/Thumbnails/`, and they delete them at the end.
   They do not read, write, or delete the files in `Application Support/Vault/`.
-  At launch, the host app removes leftover `.part` files in `Application Support/Vault/`.
+- At launch, the host app removes leftover `.part` files in `Application Support/Vault/`.
+  It also removes the thumbnail files of a stopped test run.
 
 ## Report a security issue
 

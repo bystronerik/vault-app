@@ -137,7 +137,6 @@ private struct SettingsView: View {
 
 private struct Thumbnail: View {
     let item: VaultItem
-    @Environment(\.displayScale) private var scale
     @State private var image: UIImage?
     /// The file cannot open: corrupt, or from a lost key.
     @State private var failed = false
@@ -160,7 +159,7 @@ private struct Thumbnail: View {
             .clipped()
             .contentShape(Rectangle())
             .task {
-                let image = await VaultStore.image(for: item.url, side: 150, scale: scale)
+                let image = await VaultStore.thumbnail(for: item.url)
                 // A cell that scrolls away cancels the task. Keep its state empty.
                 guard !Task.isCancelled else { return }
                 self.image = image
@@ -191,7 +190,9 @@ private struct ItemPreview: View {
                     if failed { Image(systemName: "exclamationmark.triangle").font(.title2).foregroundStyle(.secondary) }
                 }
                 .task {
-                    image = await VaultStore.image(for: item.url, side: 400, scale: scale)
+                    // A video needs only its first frame, because the player covers it.
+                    image = await item.isVideo ? VaultStore.thumbnail(for: item.url)
+                        : VaultStore.image(for: item.url, maxPixelSize: Int(400 * scale))
                     failed = image == nil
                 }
         }

@@ -15,8 +15,16 @@ struct CalculatorVaultApp: App {
             UserDefaults.standard.set(true, forKey: "installed")
         }
         // A stopped import leaves a `.part` file. No import runs at launch, so the sweep cannot delete a running import.
-        for name in (try? FileManager.default.contentsOfDirectory(atPath: vault.path)) ?? [] where name.hasSuffix(".part") {
+        let names = Set((try? FileManager.default.contentsOfDirectory(atPath: vault.path)) ?? [])
+        for name in names where name.hasSuffix(".part") {
             try? FileManager.default.removeItem(at: vault.appending(path: name))
+        }
+        // Keep only the thumbnail files of vault files. A delete in an older build, a delete during a thumbnail write,
+        // and a stopped test run leave other files. The first use of `thumbnailDirectory` creates the directory,
+        // also after iOS deletes Library/Caches.
+        for name in (try? FileManager.default.contentsOfDirectory(atPath: thumbnailDirectory.path)) ?? []
+            where !(name.hasSuffix(".thumb") && names.contains(String(name.dropLast(6)))) {
+            try? FileManager.default.removeItem(at: thumbnailDirectory.appending(path: name))
         }
         // The plaintext share copies of a stopped app.
         try? FileManager.default.removeItem(at: shareDirectory)

@@ -7,14 +7,14 @@ import XCTest
 
 /// The key of all test files.
 private let key = SymmetricKey(size: .bits256)
-/// All test files except the source videos. The tests never use `vaultDirectory`.
+/// All test files except the source videos and the thumbnail files. The tests never use `vaultDirectory`.
 private let root = URL.temporaryDirectory.appending(path: "VaultPerformanceTests")
 /// The plaintext source videos. They stay after the tests, because the simulator needs minutes to make them.
 private let videoCache = URL.cachesDirectory.appending(path: "VaultPerformanceTests")
 /// The test sizes use 1 MB = 1 000 000 bytes.
 private let megabyte = 1_000_000
-/// Each cached thumbnail keeps its whole decrypted photo, so a full pass of 10 000 photos needs about 30 GB.
-/// The full pass stops at 4 GB, half the memory of an iPhone 17, so that the test does not fill the memory of the Mac.
+/// A guard: the full pass stops at 4 GB, half the memory of an iPhone 17, so that a memory problem does not fill the
+/// memory of the Mac. Before the cache limit and the thumbnail files, a full pass of 10 000 photos needed about 30 GB.
 private let memoryLimit: UInt64 = 4_000_000_000
 
 /// The physical footprint of the app.
@@ -38,6 +38,9 @@ private func footprint() -> UInt64 {
     }
 
     override nonisolated static func tearDown() {
+        for path in FileManager.default.subpaths(atPath: root.path) ?? [] {
+            try? FileManager.default.removeItem(at: thumbnailURL(for: URL(filePath: path)))
+        }
         try? FileManager.default.removeItem(at: root)
         super.tearDown()
     }
@@ -95,7 +98,7 @@ private func footprint() -> UInt64 {
         XCTAssertEqual(result.failed, 0)
     }
 
-    /// Full pass: the thumbnails of all items, one at a time. This is the worst case: a scroll to the end after an unlock.
+    /// Full pass: the thumbnails of all items, one at a time, from the thumbnail files. This is a scroll to the end after an unlock.
     /// The pass stops at `memoryLimit`, and the test writes the number of items to the log.
     private func measureFullPass(count: Int) throws {
         let store = try autoreleasepool { try VaultStore(directory: photoDirectory(count: count)) }
@@ -117,7 +120,7 @@ private func footprint() -> UInt64 {
         run {
             var result = (items: 0, failed: 0)
             for item in items {
-                if await VaultStore.image(for: item.url, side: 150, scale: 3) == nil { result.failed += 1 }
+                if await VaultStore.thumbnail(for: item.url) == nil { result.failed += 1 }
                 result.items += 1
                 if footprint() > memoryLimit { break }
             }
@@ -153,13 +156,15 @@ private func footprint() -> UInt64 {
         }
     }
 
-    /// Grid thumbnail: `VaultStore.image(for:side:scale:)` reads the first frame through `VaultResourceLoader`.
+    /// Grid thumbnail: `VaultStore.thumbnail(for:)` reads the first frame through `VaultResourceLoader` and writes the
+    /// thumbnail file. Each run deletes the thumbnail file first, so the test measures the first time.
     private func measureGridThumbnail(megabytes: Int) throws {
         let url = try sealedVideo(megabytes: megabytes)
         var loaded = false
         measure(iterations: 5) {
+            try? FileManager.default.removeItem(at: thumbnailURL(for: url))
             startMeasuring()
-            loaded = run { await VaultStore.image(for: url, side: 150, scale: 3) != nil }
+            loaded = run { await VaultStore.thumbnail(for: url) != nil }
             stopMeasuring()
         }
         XCTAssertTrue(loaded)
@@ -251,8 +256,8 @@ private func footprint() -> UInt64 {
         }
     }
 
-    /// A directory with `count` encrypted photos. The files are copies of 10 photos, with names in the format of
-    /// `ImportedFile`. On APFS, `copyItem` makes clones, so the copies use almost no disk space.
+    /// A directory with `count` encrypted photos and their thumbnail files. The files are copies of 10 photos, with names
+    /// in the format of `ImportedFile`. On APFS, `copyItem` makes clones, so the copies use almost no disk space.
     private func photoDirectory(count: Int) throws -> URL {
         let directory = root.appending(path: "photos-\(count)")
         if FileManager.default.fileExists(atPath: directory.path) { return directory }
@@ -264,12 +269,13 @@ private func footprint() -> UInt64 {
                 let photo = photos[index % photos.count]
                 let name = "\(1_757_800_000_000 + index)-\(UUID().uuidString.prefix(8)).\(photo.pathExtension)"
                 try FileManager.default.copyItem(at: photo, to: directory.appending(path: name))
+                try FileManager.default.copyItem(at: thumbnailURL(for: photo), to: thumbnailURL(for: directory.appending(path: name)))
             }
         }
         return directory
     }
 
-    /// 10 different 12 MP photos of 2 to 4 MB, each encrypted once with `VaultCrypto.encrypt`.
+    /// 10 different 12 MP photos of 2 to 4 MB, each encrypted once with `VaultCrypto.encrypt`, and their thumbnail files.
     private func sealedPhotos() throws -> [URL] {
         guard Self.photos.isEmpty else { return Self.photos }
         let type = (CGImageDestinationCopyTypeIdentifiers() as? [String] ?? []).contains(UTType.heic.identifier) ? UTType.heic : .jpeg
@@ -283,6 +289,7 @@ private func footprint() -> UInt64 {
             let sealed = directory.appending(path: "\(index).\(type.preferredFilenameExtension!)")
             try data.write(to: plain)
             try VaultCrypto.encrypt(from: plain, to: sealed, key: key)
+            XCTAssertNotNil(run { await VaultStore.thumbnail(for: sealed) })
             Self.photos.append(sealed)
         }
         return Self.photos
@@ -313,12 +320,28 @@ private func footprint() -> UInt64 {
 }
 
 extension VaultPerformanceTests {
+    /// The first scroll after the update: 200 items with no thumbnail files. The calls start at the same time.
+    /// Each run deletes the thumbnail files first. The peak memory shows if the cache keeps decrypted photos.
+    func testNoThumbnails1000() throws {
+        let store = try autoreleasepool { try VaultStore(directory: photoDirectory(count: 1_000)) }
+        let items = store.items.prefix(200)
+        var result = (items: 0, failed: 0)
+        measure(iterations: 3) {
+            for item in items { try? FileManager.default.removeItem(at: thumbnailURL(for: item.url)) }
+            startMeasuring()
+            result = thumbnailsAtOnce(items)
+            stopMeasuring()
+        }
+        XCTAssertEqual(result.items, 200)
+        XCTAssertEqual(result.failed, 0)
+    }
+
     /// Makes the grid thumbnails of `items` with calls that start at the same time.
     private func thumbnailsAtOnce(_ items: ArraySlice<VaultItem>) -> (items: Int, failed: Int) {
         run {
             await withTaskGroup(of: Bool.self) { group in
                 for item in items {
-                    group.addTask { await VaultStore.image(for: item.url, side: 150, scale: 3) != nil }
+                    group.addTask { await VaultStore.thumbnail(for: item.url) != nil }
                 }
                 var result = (items: 0, failed: 0)
                 for await loaded in group {

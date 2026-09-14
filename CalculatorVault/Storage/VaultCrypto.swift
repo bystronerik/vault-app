@@ -3,12 +3,14 @@ import Foundation
 import ImageIO
 import UIKit
 
-/// AES-256-GCM for the vault files and PBKDF2 for the PIN. CryptoKit only.
+/// AES-256-GCM for the vault files and the thumbnail files, and PBKDF2 for the PIN. CryptoKit only.
 ///
 /// Keychain item (77 bytes): version 1, 16-byte salt, AES-GCM sealed box of the master key (combined form).
 /// Vault file: `CVLT`, plaintext length (UInt64 LE), 8-byte nonce prefix, then chunks of 1 MiB plaintext
 /// stored as ciphertext + 16-byte tag. The nonce of chunk `i` is the prefix + `i` (UInt32 BE).
 /// The 20-byte header is the additional authenticated data of every chunk.
+/// Thumbnail file: a JPEG in the AES-GCM combined form (12-byte random nonce, ciphertext, 16-byte tag) under the
+/// thumbnail key. HKDF-SHA256 derives the thumbnail key from the master key.
 enum VaultCrypto {
     enum Failure: Error { case badFormat, locked, wrongPIN }
 
@@ -51,6 +53,24 @@ enum VaultCrypto {
         guard isItem(item) else { throw Failure.badFormat }
         let box = try AES.GCM.SealedBox(combined: item.dropFirst(17))
         return try SymmetricKey(data: AES.GCM.open(box, using: pbkdf2(pin: pin, salt: item.dropFirst(1).prefix(16))))
+    }
+
+    // MARK: Thumbnails
+
+    /// A key for one use, derived from the master key. The app does not store it.
+    private static func subkey(_ master: SymmetricKey, _ info: String) -> SymmetricKey {
+        HKDF<SHA256>.deriveKey(inputKeyMaterial: master, info: Data(info.utf8), outputByteCount: 32)
+    }
+
+    /// Writes a thumbnail file: the AES-GCM combined form under the thumbnail key. Replaces an existing file.
+    static func sealThumbnail(_ jpeg: Data, to url: URL, master: SymmetricKey) throws {
+        try AES.GCM.seal(jpeg, using: subkey(master, "CalculatorVault thumbnail")).combined!
+            .write(to: url, options: [.atomic, .completeFileProtection])
+    }
+
+    /// Reads a thumbnail file. Throws when the file is missing or does not open.
+    static func openThumbnail(_ url: URL, master: SymmetricKey) throws -> Data {
+        try AES.GCM.open(AES.GCM.SealedBox(combined: Data(contentsOf: url)), using: subkey(master, "CalculatorVault thumbnail"))
     }
 
     // MARK: Files
@@ -181,6 +201,11 @@ enum VaultCrypto {
         assert(try! decryptAll(sealed, key: key) == plain)
         let range: Range<UInt64> = 1_048_000..<2_100_000
         assert(try! decrypt(sealed, key: key, range: range) == plain[Int(range.lowerBound)..<Int(range.upperBound)])
+
+        let thumbnail = dir.appending(path: "thumbnail")
+        try! sealThumbnail(plain.prefix(1_000), to: thumbnail, master: key)
+        assert(try! openThumbnail(thumbnail, master: key) == plain.prefix(1_000))
+        assert((try? openThumbnail(thumbnail, master: SymmetricKey(size: .bits256))) == nil)
 
         let handle = try! FileHandle(forUpdating: sealed)
         try! handle.seek(toOffset: 40)
