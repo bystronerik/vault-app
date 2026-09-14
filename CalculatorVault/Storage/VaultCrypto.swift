@@ -6,10 +6,14 @@ import UIKit
 
 /// AES-256-GCM for the vault files and the thumbnail files, and PBKDF2 for the PIN. System crypto only.
 ///
+/// Keys: a PBKDF2 key of the PIN wraps the master key. HKDF-SHA256 derives the thumbnail key and the file wrap key
+/// from the master key. The file wrap key wraps the random file key of each version 2 vault file (AES key wrap, RFC 3394).
 /// Keychain item (77 bytes): version 1, 16-byte salt, AES-GCM sealed box of the master key (combined form).
-/// Vault file: `CVLT`, plaintext length (UInt64 LE), 8-byte nonce prefix, then chunks of 1 MiB plaintext
-/// stored as ciphertext + 16-byte tag. The nonce of chunk `i` is the prefix + `i` (UInt32 BE).
-/// The 20-byte header is the additional authenticated data of every chunk.
+/// Vault file, version 2: `CVL2`, plaintext length (UInt64 LE), 8-byte nonce prefix, 40-byte wrapped file key, then
+/// chunks of 1 MiB plaintext stored as ciphertext + 16-byte tag under the file key. The nonce of chunk `i` is the
+/// prefix + `i` (UInt32 BE). Header bytes 0 to 19 are the additional authenticated data of every chunk, so a new wrap
+/// of the file key changes only bytes 20 to 59. A file with the length 0 has no chunk, so no tag checks its header.
+/// Vault file, version 1 (read only): `CVLT`, the same first 20 bytes, no wrapped key, and chunks under the master key.
 /// Thumbnail file: a JPEG in the AES-GCM combined form (12-byte random nonce, ciphertext, 16-byte tag) under the
 /// thumbnail key. HKDF-SHA256 derives the thumbnail key from the master key.
 enum VaultCrypto {
@@ -18,9 +22,12 @@ enum VaultCrypto {
     static let rounds = 200_000
     static let chunkSize = 1 << 20
     private static let tagSize = 16
+    /// Header bytes 0 to 19: the magic, the length, and the nonce prefix. Version 2 adds the wrapped file key.
     private static let headerSize = 20
+    private static let wrappedKeySize = 40
     private static let itemSize = 77
-    private static let magic = Data("CVLT".utf8)
+    private static let magicV1 = Data("CVLT".utf8)
+    private static let magicV2 = Data("CVL2".utf8)
 
     static func random(_ count: Int) -> Data {
         Data((0..<count).map { _ in UInt8.random(in: .min ... .max) })
@@ -77,13 +84,15 @@ enum VaultCrypto {
 
     // MARK: Files
 
-    /// Encrypts `source` in chunks to a hidden `.part` file, then renames it to `destination`.
+    /// Encrypts `source` in chunks to a hidden `.part` file, then renames it to `destination`. Writes version 2.
     static func encrypt(from source: URL, to destination: URL, key: SymmetricKey) throws {
         let input = try FileHandle(forReadingFrom: source)
         defer { try? input.close() }
         let length = try input.seekToEnd()
         try input.seek(toOffset: 0)
-        let header = magic + withUnsafeBytes(of: length.littleEndian) { Data($0) } + random(8)
+        let fileKey = SymmetricKey(size: .bits256)
+        let header = try magicV2 + withUnsafeBytes(of: length.littleEndian) { Data($0) } + random(8)
+            + AES.KeyWrap.wrap(fileKey, using: subkey(key, "CalculatorVault file key"))
         let part = destination.deletingLastPathComponent().appending(path: ".\(destination.lastPathComponent).part")
         guard FileManager.default.createFile(atPath: part.path, contents: header,
                                              attributes: [.protectionKey: FileProtectionType.complete]) else { throw Failure.badFormat }
@@ -95,7 +104,7 @@ enum VaultCrypto {
             // The pool releases the read buffers after each chunk. Without it, they stay until the caller's pool empties.
             while try autoreleasepool(invoking: {
                 guard let chunk = try input.read(upToCount: chunkSize), !chunk.isEmpty else { return false }
-                let box = try AES.GCM.seal(chunk, using: key, nonce: nonce(header, index), authenticating: header)
+                let box = try AES.GCM.seal(chunk, using: fileKey, nonce: nonce(header, index), authenticating: header.prefix(headerSize))
                 try output.write(contentsOf: box.ciphertext + box.tag)
                 index += 1
                 return true
@@ -118,6 +127,7 @@ enum VaultCrypto {
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
         let header = try header(handle)
+        let fileKey = try contentKey(header, master: key)
         let total = length(of: header)
         let range = range ?? 0..<total
         guard range.upperBound <= total else { throw Failure.badFormat }
@@ -126,10 +136,10 @@ enum VaultCrypto {
             try autoreleasepool {
                 let start = UInt64(index) * UInt64(chunkSize)
                 let size = Int(min(UInt64(chunkSize), total - start))
-                try handle.seek(toOffset: UInt64(headerSize) + UInt64(index) * UInt64(chunkSize + tagSize))
+                try handle.seek(toOffset: UInt64(header.count) + UInt64(index) * UInt64(chunkSize + tagSize))
                 guard let stored = try handle.read(upToCount: size + tagSize), stored.count == size + tagSize else { throw Failure.badFormat }
                 let box = try AES.GCM.SealedBox(nonce: nonce(header, index), ciphertext: stored.prefix(size), tag: stored.suffix(tagSize))
-                let plain = try AES.GCM.open(box, using: key, authenticating: header)
+                let plain = try AES.GCM.open(box, using: fileKey, authenticating: header.prefix(headerSize))
                 let lo = Int(max(range.lowerBound, start) - start)
                 let hi = Int(min(range.upperBound, start + UInt64(size)) - start)
                 try body(plain.dropFirst(lo).prefix(hi - lo))
@@ -160,11 +170,21 @@ enum VaultCrypto {
         return UIImage(cgImage: cgImage)
     }
 
+    /// The header: 20 bytes for version 1, and 60 bytes with the wrapped file key for version 2.
     private static func header(_ handle: FileHandle) throws -> Data {
         try handle.seek(toOffset: 0)
-        guard let header = try handle.read(upToCount: headerSize), header.count == headerSize,
-              header.prefix(4) == magic else { throw Failure.badFormat }
-        return header
+        guard let header = try handle.read(upToCount: headerSize), header.count == headerSize else { throw Failure.badFormat }
+        if header.prefix(4) == magicV1 { return header }
+        guard header.prefix(4) == magicV2, let wrapped = try handle.read(upToCount: wrappedKeySize),
+              wrapped.count == wrappedKeySize else { throw Failure.badFormat }
+        return header + wrapped
+    }
+
+    /// The key of the chunks: the master key for version 1, and the unwrapped file key for version 2.
+    /// The key wrap checks the wrapped key, so a changed byte throws.
+    private static func contentKey(_ header: Data, master: SymmetricKey) throws -> SymmetricKey {
+        guard header.prefix(4) == magicV2 else { return master }
+        return try AES.KeyWrap.unwrap(header.dropFirst(headerSize), using: subkey(master, "CalculatorVault file key"))
     }
 
     private static func length(of header: Data) -> UInt64 {
@@ -172,7 +192,7 @@ enum VaultCrypto {
     }
 
     private static func nonce(_ header: Data, _ index: UInt32) throws -> AES.GCM.Nonce {
-        try AES.GCM.Nonce(data: header.dropFirst(12) + withUnsafeBytes(of: index.bigEndian) { Data($0) })
+        try AES.GCM.Nonce(data: header.dropFirst(12).prefix(8) + withUnsafeBytes(of: index.bigEndian) { Data($0) })
     }
 
     #if DEBUG
@@ -210,20 +230,33 @@ enum VaultCrypto {
         assert(try! openThumbnail(thumbnail, master: key) == plain.prefix(1_000))
         assert((try? openThumbnail(thumbnail, master: SymmetricKey(size: .bits256))) == nil)
 
+        // The wrapped key of another file gives another file key, so the chunk tags fail.
+        let other = dir.appending(path: "other.jpg")
+        try! encrypt(from: source, to: other, key: key)
+        var otherData = try! Data(contentsOf: other)
+        try! otherData.replaceSubrange(20..<60, with: Data(contentsOf: sealed)[20..<60])
+        try! otherData.write(to: other)
+        assert((try? decryptAll(other, key: key)) == nil)
+
+        // Offset 80 is in the first chunk. A changed byte in the header makes the whole file fail.
         let handle = try! FileHandle(forUpdating: sealed)
-        try! handle.seek(toOffset: 40)
+        try! handle.seek(toOffset: 80)
         let byte = try! handle.read(upToCount: 1)!
-        try! handle.seek(toOffset: 40)
+        try! handle.seek(toOffset: 80)
         try! handle.write(contentsOf: Data([byte[0] ^ 0xFF]))
         try! handle.close()
         assert((try? decryptAll(sealed, key: key)) == nil)
         assert((try? decrypt(sealed, key: key, range: 1_100_000..<1_200_000)) != nil)
 
-        // A fixed version 1 file: master key bytes 00 to 1f, nonce prefix 01 to 08. A format change must still open it.
+        // Fixed files: master key bytes 00 to 1f, file key bytes 20 to 3f, nonce prefix 01 to 08.
+        // A change of the HKDF info, the header layout, or the additional authenticated data makes them fail.
         let master = SymmetricKey(data: Data(0..<32))
-        let v1 = dir.appending(path: "v1.jpg")
+        let v1 = dir.appending(path: "v1.jpg"), v2 = dir.appending(path: "v2.jpg")
         try! bytes("43564c5407000000000000000102030405060708fc2e0ec4e8648110ac742d0cd910a7db5a6bb00fe77168").write(to: v1)
         assert(try! decryptAll(v1, key: master) == Data("v1 test".utf8))
+        try! bytes("43564c3207000000000000000102030405060708e70688b971db6407c7b727d9a032202c508f5947f81b88b07e"
+            + "1455874ac5d32a7543d77127acdfe31ec2cd24e5c0435c94014f304d00112cd36b70f787e459").write(to: v2)
+        assert(try! decryptAll(v2, key: master) == Data("v2 test".utf8))
     }
     // swiftlint:enable force_try
     #endif

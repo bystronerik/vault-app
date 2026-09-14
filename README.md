@@ -65,7 +65,7 @@ Use a device passcode, a long PIN, and Advanced Data Protection on the iCloud ac
 ## Security design
 
 The app makes one random 256-bit master key. The PIN wraps the master key.
-The app encrypts each file under the master key. The app never stores the PIN.
+Each vault file has its own random file key. The master key protects the file keys. The app never stores the PIN.
 
 Code: `CalculatorVault/Security/` holds the PIN and Keychain code.
 `CalculatorVault/Storage/` holds the encryption and file code.
@@ -78,7 +78,8 @@ Code: `CalculatorVault/Security/` holds the PIN and Keychain code.
 - A wrong PIN fails the AES-GCM tag check. Each try costs about 30 ms in the simulator on a Mac with an Apple M3 Pro chip.
   The PBKDF2 code comes from CommonCrypto. The attacker cost does not depend on the speed of this code.
 - Change PIN wraps the same master key under the new PIN. The vault files and the thumbnail files do not change.
-- The app derives the thumbnail key from the master key with HKDF-SHA256. The app does not store it.
+- The app derives the thumbnail key and the file wrap key from the master key with HKDF-SHA256. The app does not store them.
+- The file wrap key wraps the random 256-bit file key of each vault file with AES key wrap (RFC 3394).
 
 ### Face ID
 
@@ -92,10 +93,13 @@ Code: `CalculatorVault/Security/` holds the PIN and Keychain code.
 
 ### File format
 
-- Header: the magic `CVLT`, the plaintext length (UInt64), and an 8-byte nonce prefix.
-- Chunks: up to 1 MiB of plaintext each, encrypted with AES-256-GCM, followed by a 16-byte tag.
+- Header, version 2: the magic `CVL2`, the plaintext length (UInt64), an 8-byte nonce prefix, and the 40-byte wrapped file key.
+- Chunks: up to 1 MiB of plaintext each, encrypted with AES-256-GCM under the file key, followed by a 16-byte tag.
 - The nonce of a chunk is the prefix plus the chunk index.
-- The header is the additional authenticated data of every chunk.
+- The first 20 bytes of the header are the additional authenticated data of every chunk. The key wrap checks the wrapped file key.
+- A file with the length 0 has no chunks, so no tag checks its header.
+- The app also reads version 1 files. It writes only version 2 files.
+  A version 1 file has the magic `CVLT`, no wrapped file key, and chunks under the master key.
 - The app writes to a hidden `.part` file and renames it when the write completes.
   The file keeps its extension.
 - Thumbnail file: a JPEG of not more than 450 pixels on the long side, encrypted with AES-256-GCM under the thumbnail key.
@@ -144,6 +148,7 @@ It also closes the viewer, the sheets, and the pickers with no animation.
 - The backup holds only ciphertext, the salt, and the wrapped master key.
 - The backup does not include the encrypted thumbnail files, because they are in `Library/Caches/`.
   After a restore, the grid makes them again. iOS can also delete them when storage is low.
+- Vault files from a backup of an older version open.
 - After a restore on a new device, type the same PIN and press `%`.
 - Advanced Data Protection on the iCloud account makes the backup end-to-end encrypted.
 - The Keychain survives a reinstall. The app clears the old item on the first launch after an install,
@@ -268,7 +273,7 @@ They measure the time and the peak memory. They have no pass or fail limits, so 
   The first run on a new simulator takes about 5 minutes more, because the tests make the test videos.
 - Free disk space: 4 GB. The test videos use 1.6 GB. They stay in `Library/Caches` of the app for the next runs.
   The tests delete all other test files at the end.
-- Free memory: 1 GB. In the run on 2026-09-14, the app used not more than 110 MB.
+- Free memory: 1 GB. In the run on 2026-09-14, the app used not more than 115 MB.
   As a guard, the full pass over the thumbnails stops when the app uses 4 GB.
 - The tests keep the other test files in a temporary directory.
   They also write thumbnail files to `Library/Caches/Thumbnails/`, and they delete them at the end.

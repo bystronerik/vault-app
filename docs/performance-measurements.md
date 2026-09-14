@@ -5,13 +5,13 @@ To run the tests, see [Performance tests](../README.md#performance-tests) in the
 
 ## Test conditions
 
-- Date: 2026-09-14, 18:48 to 18:51 CEST.
-- Code: the commit "Store encrypted grid thumbnails in Library/Caches".
+- Date: 2026-09-14, 19:05 to 19:08 CEST.
+- Code: the commit "Encrypt each new vault file with a random file key". The vault files use format version 2.
   The first measurements, before the fixes, used `CalculatorVault/Storage/` as in commit `a3f0d56`.
 - Destination: iPhone 17 simulator "CalculatorVault Tests", iOS 26.5 (23F77).
 - Mac: Apple M3 Pro chip, 18 GB of memory, macOS 26.6.2, Xcode 26.6 (17F113).
 - Build: Release configuration with `ENABLE_TESTABILITY=YES`.
-- Result: 23 tests, 0 failures. The tests took 2 minutes 42 seconds, with the test videos already in the cache.
+- Result: 23 tests, 0 failures. The tests took 2 minutes 43 seconds, with the test videos already in the cache.
   The first run, before the fixes, took 14 minutes 17 seconds.
 
 ## Test data
@@ -36,16 +36,16 @@ To run the tests, see [Performance tests](../README.md#performance-tests) in the
 
 | Case | Items | Time | Time RSD | Peak memory | Memory RSD | Runs | Before |
 |---|---:|---|---:|---:|---:|---:|---|
-| Open | 1 000 | 12 ms | 0.6 % | 57 MB | 0.0 % | 5 | 39 ms, 54 MB |
-| Open | 2 000 | 25 ms | 0.8 % | 57 MB | 0.0 % | 5 | 80 ms, 54 MB |
-| Open | 10 000 | 114 ms | 2.2 % | 57 MB | 0.1 % | 5 | 358 ms, 54 MB |
-| First screen | 1 000 | 13 ms | 2.6 % | 57 MB | 0.0 % | 5 | 1.306 s, 111 MB |
-| First screen | 2 000 | 13 ms | 4.7 % | 58 MB | 0.4 % | 5 | 1.298 s, 112 MB |
-| First screen | 10 000 | 13 ms | 4.0 % | 64 MB | 0.0 % | 5 | 1.299 s, 116 MB |
-| Full pass | 1 000 | 1.512 s (1000 items, 1.5 ms per item) | 7.4 % | 58 MB | 0.3 % | 3 | 72.6 ms per item, 3 298 MB |
-| Full pass | 2 000 | 2.866 s (2000 items, 1.4 ms per item) | 5.8 % | 58 MB | 0.8 % | 3 | 72.4 ms per item, 4 003 MB |
-| Full pass | 10 000 | 16.20 s (10 000 items, 1.6 ms per item) | 2.3 % | 66 MB | 0.3 % | 3 | 72.9 ms per item, 4 003 MB |
-| No thumbnails | 1 000 | 16.53 s (200 items, 82.6 ms per item) | 1.4 % | 71 MB | 1.0 % | 3 | — |
+| Open | 1 000 | 12 ms | 1.1 % | 57 MB | 0.0 % | 5 | 39 ms, 54 MB |
+| Open | 2 000 | 24 ms | 1.8 % | 57 MB | 0.0 % | 5 | 80 ms, 54 MB |
+| Open | 10 000 | 112 ms | 0.9 % | 57 MB | 0.0 % | 5 | 358 ms, 54 MB |
+| First screen | 1 000 | 18 ms | 7.4 % | 57 MB | 0.1 % | 5 | 1.306 s, 111 MB |
+| First screen | 2 000 | 16 ms | 25.7 % | 57 MB | 0.0 % | 5 | 1.298 s, 112 MB |
+| First screen | 10 000 | 14 ms | 1.8 % | 64 MB | 0.0 % | 5 | 1.299 s, 116 MB |
+| Full pass | 1 000 | 1.475 s (1000 items, 1.5 ms per item) | 7.5 % | 58 MB | 0.3 % | 3 | 72.6 ms per item, 3 298 MB |
+| Full pass | 2 000 | 2.888 s (2000 items, 1.4 ms per item) | 4.5 % | 58 MB | 0.3 % | 3 | 72.4 ms per item, 4 003 MB |
+| Full pass | 10 000 | 15.85 s (10 000 items, 1.6 ms per item) | 0.9 % | 66 MB | 0.3 % | 3 | 72.9 ms per item, 4 003 MB |
+| No thumbnails | 1 000 | 16.83 s (200 items, 84.2 ms per item) | 1.3 % | 71 MB | 1.0 % | 3 | — |
 
 - Open: `VaultStore` lists and sorts the files.
 - First screen: `VaultStore.thumbnail(for:)` for the first 18 items, with calls that start at the same time, as the grid does.
@@ -60,18 +60,18 @@ To run the tests, see [Performance tests](../README.md#performance-tests) in the
 
 | Case | Size | Time | Time RSD | Peak memory | Memory RSD | Runs | Before |
 |---|---:|---|---:|---:|---:|---:|---|
-| Import | 100 MB | 166 ms (614 MB/s) | 39.8 % | 55 MB | 0.1 % | 5 | 137 ms, 74 MB |
-| Import | 500 MB | 851 ms (595 MB/s) | 64.6 % | 56 MB | 1.3 % | 5 | 412 ms, 175 MB |
-| Import | 1000 MB | 600 ms (1682 MB/s) | 8.3 % | 56 MB | 1.7 % | 5 | 750 ms, 302 MB |
-| Grid thumbnail | 100 MB | 42 ms | 3.3 % | 88 MB | 0.6 % | 5 | 75 ms, 145 MB |
-| Grid thumbnail | 500 MB | 45 ms | 8.9 % | 88 MB | 0.1 % | 5 | 296 ms, 553 MB |
-| Grid thumbnail | 1000 MB | 43 ms | 4.2 % | 88 MB | 0.2 % | 5 | 709 ms, 1 184 MB |
-| Playback start | 100 MB | 22 ms | 31.9 % | 98 MB | 6.4 % | 5 | 39 ms, 144 MB |
-| Playback start | 500 MB | 18 ms | 14.4 % | 96 MB | 8.9 % | 5 | 174 ms, 549 MB |
-| Playback start | 1000 MB | 21 ms | 37.9 % | 99 MB | 17.8 % | 5 | 368 ms, 1 051 MB |
-| Seek | 100 MB | 55 ms | 1.2 % | 95 MB | 0.4 % | 5 | 64 ms, 150 MB |
-| Seek | 500 MB | 56 ms | 1.6 % | 106 MB | 0.0 % | 5 | 211 ms, 552 MB |
-| Seek | 1000 MB | 57 ms | 3.0 % | 105 MB | 0.0 % | 5 | 417 ms, 1 052 MB |
+| Import | 100 MB | 89 ms (1146 MB/s) | 46.5 % | 55 MB | 0.0 % | 5 | 137 ms, 74 MB |
+| Import | 500 MB | 972 ms (521 MB/s) | 35.9 % | 55 MB | 1.1 % | 5 | 412 ms, 175 MB |
+| Import | 1000 MB | 644 ms (1567 MB/s) | 24.5 % | 55 MB | 0.6 % | 5 | 750 ms, 302 MB |
+| Grid thumbnail | 100 MB | 41 ms | 4.5 % | 87 MB | 0.0 % | 5 | 75 ms, 145 MB |
+| Grid thumbnail | 500 MB | 47 ms | 9.0 % | 88 MB | 0.3 % | 5 | 296 ms, 553 MB |
+| Grid thumbnail | 1000 MB | 43 ms | 6.1 % | 88 MB | 0.7 % | 5 | 709 ms, 1 184 MB |
+| Playback start | 100 MB | 19 ms | 13.8 % | 95 MB | 3.2 % | 5 | 39 ms, 144 MB |
+| Playback start | 500 MB | 20 ms | 5.1 % | 96 MB | 1.6 % | 5 | 174 ms, 549 MB |
+| Playback start | 1000 MB | 21 ms | 16.5 % | 113 MB | 11.7 % | 5 | 368 ms, 1 051 MB |
+| Seek | 100 MB | 56 ms | 2.2 % | 95 MB | 0.5 % | 5 | 64 ms, 150 MB |
+| Seek | 500 MB | 58 ms | 0.7 % | 106 MB | 0.1 % | 5 | 211 ms, 552 MB |
+| Seek | 1000 MB | 57 ms | 2.3 % | 106 MB | 0.0 % | 5 | 417 ms, 1 052 MB |
 
 - Import: `VaultCrypto.encrypt(from:to:key:)`. MB/s is the size of the file divided by the time.
 - Grid thumbnail: `VaultStore.thumbnail(for:)` reads the first frame and writes the thumbnail file.
@@ -200,7 +200,7 @@ Fixed in: the commits "Remove leftover files at launch instead of in VaultStore.
 - An image from `CGImageSourceCreateThumbnailAtIndex` decodes the photo again each time something renders it.
   For a 12 MP HEIC photo on the simulator, the thumbnail call took 70 ms, a render 70 ms, and `jpegData` on that image 135 ms.
   `kCGImageSourceShouldCacheImmediately` did not change these times. So `VaultStore` draws the image one time before the JPEG encode.
-  With `jpegData` on the image, the No thumbnails test took 23.5 s. With one queue operation at a time, it took 41.4 s.
+  With `jpegData` on the image, the No thumbnails test took 23.5 s. With that code and one queue operation at a time, it took 41.4 s.
 - The player item has an `AVPlayerItemVideoOutput`, because `VideoPlayer` shows the frames in the app.
   Without a video output, a seek completed in 0.4 ms and loaded no data.
 - The tests set `Session.shared.unlocked` to false after `Session.shared.unlock`.
