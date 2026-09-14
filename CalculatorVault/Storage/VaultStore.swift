@@ -25,8 +25,9 @@ struct VaultItem: Identifiable, Hashable {
     private(set) var items: [VaultItem] = []
     /// The directory that the store lists. The performance tests use a temporary directory.
     let directory: URL
-    /// Decrypted thumbnails and previews. `Session.lock` empties it.
-    static let cache = NSCache<NSString, UIImage>()
+    // ponytail: count limit, not strict and not LRU. Use totalCostLimit if the entry sizes differ.
+    /// Decrypted thumbnails and previews, not more than 50. `Session.lock` empties it.
+    static let cache = { let cache = NSCache<NSString, UIImage>(); cache.countLimit = 50; return cache }()
 
     init(directory: URL = vaultDirectory) {
         self.directory = directory

@@ -160,9 +160,14 @@ private struct Thumbnail: View {
             .clipped()
             .contentShape(Rectangle())
             .task {
-                image = await VaultStore.image(for: item.url, side: 150, scale: scale)
+                let image = await VaultStore.image(for: item.url, side: 150, scale: scale)
+                // A cell that scrolls away cancels the task. Keep its state empty.
+                guard !Task.isCancelled else { return }
+                self.image = image
                 failed = image == nil
             }
+            // The cache limits the memory only when the cells off the screen keep no image.
+            .onDisappear { image = nil }
     }
 }
 
