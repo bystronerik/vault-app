@@ -82,8 +82,6 @@ struct VaultItem: Identifiable, Hashable {
 
 /// Encrypts a picked photo or video into the vault directory. The app writes no plaintext copy.
 struct ImportedFile: Transferable {
-    let url: URL
-
     static var transferRepresentation: some TransferRepresentation {
         FileRepresentation(importedContentType: .movie) { try Self(copying: $0.file) }
         FileRepresentation(importedContentType: .image) { try Self(copying: $0.file) }
@@ -94,7 +92,6 @@ struct ImportedFile: Transferable {
         let name = "\(Int(Date().timeIntervalSince1970 * 1000))-\(UUID().uuidString.prefix(8))"
         let dest = vaultDirectory.appending(path: name).appendingPathExtension(source.pathExtension)
         try VaultCrypto.encrypt(from: source, to: dest, key: key)
-        url = dest
     }
 }
 

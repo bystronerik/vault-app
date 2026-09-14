@@ -204,8 +204,8 @@ private final class PlayerView: UIView {
     override static var layerClass: AnyClass { AVPlayerLayer.self }
     private let url: URL
     /// The asset reads the file through the loader, and the looper repeats the item. Keep both while the player exists.
-    private var loader: VaultResourceLoader?
-    private var looper: AVPlayerLooper?
+    private var loader: VaultResourceLoader? // periphery:ignore
+    private var looper: AVPlayerLooper? // periphery:ignore
 
     init(url: URL) {
         self.url = url

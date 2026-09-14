@@ -1,0 +1,6 @@
+project: CalculatorVault.xcodeproj
+schemes:
+  - CalculatorVault
+relative_results: true
+strict: true
+disable_update_check: true
