@@ -14,8 +14,8 @@ pre-commit:
       run: swiftlint lint --strict --quiet {staged_files}
       env: *homebrew
     - name: periphery
-      # Lefthook skips this job when no Swift file is staged.
-      glob: "*.swift"
+      # Lefthook skips this job when no Swift file and no String Catalog is staged.
+      glob: "*.{swift,xcstrings}"
       # Periphery keeps one build cache for all checkouts of the project, and other checkouts cause false results.
       # Thus the job builds into build/periphery of this checkout.
       run: >-
@@ -23,4 +23,5 @@ pre-commit:
         -destination 'generic/platform=iOS Simulator' -derivedDataPath build/periphery
         CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=YES
         && periphery scan --quiet --skip-build --index-store-path build/periphery/Index.noindex/DataStore
+        && python3 scripts/check-localization-keys.py
       env: *homebrew

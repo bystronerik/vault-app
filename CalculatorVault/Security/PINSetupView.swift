@@ -7,37 +7,37 @@ struct PINSetupView: View {
     @State private var current = ""
     @State private var pin = ""
     @State private var confirm = ""
-    @State private var error: String?
+    @State private var error: LocalizedStringResource?
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    if requireCurrent { SecureField("Current PIN", text: $current) }
-                    SecureField("New PIN (4 to 8 digits)", text: $pin)
-                    SecureField("Confirm PIN", text: $confirm)
+                    if requireCurrent { SecureField(.pinSetupFieldCurrentPIN, text: $current) }
+                    SecureField(.pinSetupFieldNewPIN, text: $pin)
+                    SecureField(.pinSetupFieldConfirmPIN, text: $confirm)
                 } footer: {
-                    Text("To open the vault, type the PIN on the calculator and press %.")
+                    Text(.pinSetupFooter)
                 }
                 if let error { Text(error).foregroundStyle(.red) }
-                Button("Save PIN", action: save)
+                Button(.pinSetupButtonSave, action: save)
             }
             .keyboardType(.numberPad)
-            .navigationTitle(requireCurrent ? "Change PIN" : "Set PIN")
+            .navigationTitle(requireCurrent ? .pinSetupTitleChange : .pinSetupTitleSet)
             .navigationBarTitleDisplayMode(.inline)
         }
     }
 
     private func save() {
-        guard PINStore.isValid(pin) else { error = "Use 4 to 8 digits. The first digit must not be 0."; return }
-        guard pin == confirm else { error = "The two PINs are not the same."; return }
+        guard PINStore.isValid(pin) else { error = .pinSetupErrorInvalidPIN; return }
+        guard pin == confirm else { error = .pinSetupErrorMismatch; return }
         do {
             if requireCurrent { try PINStore.change(from: current, to: pin) } else { try PINStore.save(pin) }
             onDone()
         } catch VaultCrypto.Failure.wrongPIN {
-            error = "The current PIN is not correct."
+            error = .pinSetupErrorWrongCurrentPIN
         } catch {
-            self.error = "The app could not save the PIN."
+            self.error = .pinSetupErrorSaveFailed
         }
     }
 }

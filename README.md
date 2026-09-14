@@ -1,7 +1,7 @@
 # CalculatorVault
 
 A native iOS calculator with a hidden photo and video vault.
-SwiftUI, iOS 17+, Xcode 16+.
+SwiftUI, iOS 17+, Xcode 26+.
 
 Type the PIN on the calculator and press `%` to open the vault.
 
@@ -17,7 +17,7 @@ TestFlight: internal testers only. There is no public link yet.
 
 Build from source:
 
-1. Open `CalculatorVault.xcodeproj` in Xcode 16 or later.
+1. Open `CalculatorVault.xcodeproj` in Xcode 26 or later.
 2. Run the `CalculatorVault` scheme on an iPhone with iOS 17 or later, or on a simulator.
 
 ## Open the vault
@@ -155,11 +155,12 @@ It also closes the viewer, the sheets, and the pickers with no animation.
 
 ### Code checks
 
-A Git pre-commit hook checks the Swift files before each commit. [Lefthook](https://lefthook.dev) runs these tools in this order:
+A Git pre-commit hook checks the Swift files and the String Catalogs before each commit. [Lefthook](https://lefthook.dev) runs these tools in this order:
 
 - [SwiftFormat](https://github.com/nicklockwood/SwiftFormat) formats the staged Swift files and adds the changes to the commit.
 - [SwiftLint](https://github.com/realm/SwiftLint) finds style and code problems. A warning also stops the commit.
 - [Periphery](https://github.com/peripheryapp/periphery) builds the app and the tests, and finds unused code.
+- `scripts/check-localization-keys.py` checks `Localizable.xcstrings` against the code. See [Localization](#localization).
 
 1. Install the tools.
 
@@ -173,12 +174,65 @@ A Git pre-commit hook checks the Swift files before each commit. [Lefthook](http
    lefthook install
    ```
 
-- Run time: about 5 to 15 seconds for a commit that changes Swift files. A commit without Swift files skips the checks.
+- Run time: about 5 to 15 seconds for a commit that changes Swift files or String Catalogs. Other commits skip the checks.
 - The configuration is in `.swiftformat`, `.swiftlint.yml`, `.periphery.yml`, and `lefthook.yml`.
 - The hook builds the app into `build/periphery`. The default build cache of Periphery is the same for all clones of the project, and other clones cause false results.
 - When you commit part of a file, Lefthook removes the other changes of that file until the hook ends. Then it puts them back.
 - If Periphery reports code that the app uses, add `// periphery:ignore` to the declaration.
 - To skip the checks for one commit, use `git commit --no-verify`.
+
+### Localization
+
+The app has English text only. `CalculatorVault/Localizable.xcstrings` contains the text of the app.
+`CalculatorVault/InfoPlist.xcstrings` contains the Info.plist text, for example `CFBundleDisplayName`. Apple sets these keys.
+
+Each string has a semantic key, for example `settings.title`. The rules for keys are:
+
+- Write the key as lowerCamelCase segments with dots between them. First write the screen or the feature, then the element.
+- Use one key for one meaning. If two texts are equal but have a different function, use two keys.
+- The catalog is the only place for the English text and the comment for translators. The Swift code contains no English text.
+- The build makes one `LocalizedStringResource` symbol for each key. It removes the dots and makes the first letter of each segment uppercase.
+  For example, `pinSetup.error.wrongCurrentPIN` becomes `.pinSetupErrorWrongCurrentPIN`.
+- A key with `%lld` becomes a function with an `Int` argument, for example `.vaultSelectionTitle(selected.count)`.
+
+To add a string:
+
+1. Add an entry to `Localizable.xcstrings`. Give it `"extractionState" : "manual"`, a comment, and an `en` value with the state `translated`.
+   Without `manual`, the build makes no symbol. Without a value, the app shows the key.
+2. Use the symbol in the code: `Text(.settingsTitle)`, `Button(.vaultToolbarLock) { ... }`, or `.navigationTitle(.vaultTitle)`.
+   For a `String` parameter, use `String(localized: .calculatorError)`.
+3. For inflection, use `String(AttributedString(localized: .vaultDeleteTitle(count)).characters)`. `String(localized:)` does not apply the `^[...](inflect: true)` markup.
+4. Do not use a string literal as a key or as text, for example `Text("settings.title")` or `error = "Save PIN"`. The code compiles, but the app shows the literal.
+
+To rename a key, change the key in `Localizable.xcstrings` and the symbol at all call sites in the same commit.
+Stage all these files. The hook builds the files on disk, so it does not find a commit that has only a part of the rename.
+Do not rename a key to a key that the catalog already has. JSON does not stop two equal keys, and the build keeps only the first entry.
+
+To change the English text, change only the `en` value in the catalog.
+If the new text adds or removes a format specifier such as `%lld`, the symbol changes between a variable and a function. Then change the call sites too.
+
+To remove a string, remove the call sites and the catalog entry in the same commit. The build puts all manual entries into the app, also unused entries.
+
+If the build shows "has no member", "cannot be resolved without a contextual type", or "unable to type-check this expression in reasonable time", look for a symbol that has no catalog key.
+The last message can show a different line in the `VaultView` body.
+
+The pre-commit hook runs `python3 scripts/check-localization-keys.py` after the build. The script stops the commit when:
+
+- a key is not dotted lowerCamelCase, or the catalog has the same key two times
+- an entry is not manual, or has no `en` value, or has no comment
+- no Swift file uses the symbol of a key (code in comments does not count)
+- the Swift code has a localizable string literal. The script reads the `.stringsdata` files of the build in `build/periphery`.
+
+Run the export only after you change an Info.plist text. The export must not add entries to `Localizable.xcstrings`.
+
+```bash
+xcodebuild -exportLocalizations -project CalculatorVault.xcodeproj -scheme CalculatorVault -derivedDataPath build/l10n -localizationPath build/l10n/export -exportLanguage en
+```
+
+To find text that the app does not localize, run the app with the `-NSAccentuateLocalizedStrings YES` argument.
+Localized text shows accents. Text without accents does not go through the catalog.
+With this argument, a text with `%lld` shows the accented format specifier instead of the number. Without the argument, the text is correct.
+The calculator keys and the number on the display do not use the catalog.
 
 ### Performance tests
 

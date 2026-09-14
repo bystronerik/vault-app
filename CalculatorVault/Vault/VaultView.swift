@@ -40,7 +40,7 @@ struct VaultView: View {
                             .contextMenu {
                                 if !selecting {
                                     ShareLink(item: VaultExport(item: item), preview: SharePreview(item.url.lastPathComponent))
-                                    Button("Delete", systemImage: "trash", role: .destructive) {
+                                    Button(.vaultDeleteButton, systemImage: "trash", role: .destructive) {
                                         deleting = [item]; confirmDelete = true
                                     }
                                 }
@@ -52,24 +52,24 @@ struct VaultView: View {
             }
             .overlay {
                 if store.items.isEmpty {
-                    ContentUnavailableView("No Items", systemImage: "photo.on.rectangle",
-                                           description: Text("Tap + to import photos and videos."))
+                    ContentUnavailableView(.vaultEmptyTitle, systemImage: "photo.on.rectangle",
+                                           description: Text(.vaultEmptyMessage))
                 }
             }
-            .navigationTitle(selecting ? "\(selected.count) Selected" : "Vault")
+            .navigationTitle(selecting ? .vaultSelectionTitle(selected.count) : .vaultTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Lock", systemImage: "lock.fill") { Session.shared.lock() }
+                    Button(.vaultToolbarLock, systemImage: "lock.fill") { Session.shared.lock() }
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     if selecting {
-                        Button("Done") { selecting = false; selected = [] }
+                        Button(.vaultSelectionDone) { selecting = false; selected = [] }
                     } else {
-                        Button("Import", systemImage: "plus") { picking = true }
+                        Button(.vaultToolbarImport, systemImage: "plus") { picking = true }
                         Menu {
-                            Button("Select", systemImage: "checkmark.circle") { selecting = true }
-                            Button("Settings", systemImage: "gear") { showingSettings = true }
+                            Button(.vaultMenuSelect, systemImage: "checkmark.circle") { selecting = true }
+                            Button(.settingsTitle, systemImage: "gear") { showingSettings = true }
                         } label: {
                             Image(systemName: "ellipsis.circle")
                         }
@@ -82,7 +82,7 @@ struct VaultView: View {
                         })
                         .disabled(selected.isEmpty)
                         Spacer()
-                        Button("Delete", systemImage: "trash", role: .destructive) { deleting = selected; confirmDelete = true }
+                        Button(.vaultDeleteButton, systemImage: "trash", role: .destructive) { deleting = selected; confirmDelete = true }
                             .disabled(selected.isEmpty)
                     }
                 }
@@ -99,9 +99,9 @@ struct VaultView: View {
                 Task { await store.importItems(new); picks = [] }
             }
             // The dialog title is plain text, so Foundation must apply the inflection first.
-            .confirmationDialog(String(AttributedString(localized: "Delete ^[\(deleting.count) item](inflect: true)?").characters),
+            .confirmationDialog(String(AttributedString(localized: .vaultDeleteTitle(deleting.count)).characters),
                                 isPresented: $confirmDelete, titleVisibility: .visible) {
-                Button("Delete", role: .destructive) { store.delete(deleting); selected = []; selecting = false }
+                Button(.vaultDeleteButton, role: .destructive) { store.delete(deleting); selected = []; selecting = false }
             }
             .fullScreenCover(item: $viewing) { item in ItemViewer(store: store, current: item) }
             .navigationDestination(isPresented: $showingSettings) { SettingsView() }
@@ -118,18 +118,18 @@ private struct SettingsView: View {
 
     var body: some View {
         Form {
-            Button("Change PIN") { changingPIN = true }
-            Toggle("Face ID", isOn: $faceID)
-            Picker("Lock Timeout", selection: $lockTimeout) {
-                Text("Instant").tag(0)
-                Text("1 minute").tag(60)
-                Text("5 minutes").tag(300)
-                Text("15 minutes").tag(900)
-                Text("30 minutes").tag(1800)
-                Text("1 hour").tag(3600)
+            Button(.settingsChangePIN) { changingPIN = true }
+            Toggle(.settingsFaceID, isOn: $faceID)
+            Picker(.lockTimeoutLabel, selection: $lockTimeout) {
+                Text(.lockTimeoutOptionInstant).tag(0)
+                Text(.lockTimeoutOptionOneMinute).tag(60)
+                Text(.lockTimeoutOptionFiveMinutes).tag(300)
+                Text(.lockTimeoutOptionFifteenMinutes).tag(900)
+                Text(.lockTimeoutOptionThirtyMinutes).tag(1800)
+                Text(.lockTimeoutOptionOneHour).tag(3600)
             }
         }
-        .navigationTitle("Settings")
+        .navigationTitle(.settingsTitle)
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $changingPIN) { PINSetupView(requireCurrent: true) { changingPIN = false } }
     }

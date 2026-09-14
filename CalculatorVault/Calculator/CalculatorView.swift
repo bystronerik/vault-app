@@ -37,7 +37,7 @@ struct CalculatorView: View {
             let size = (geo.size.width - gap * 5) / 4
             VStack(spacing: gap) {
                 Spacer()
-                Text(engine.text)
+                Text(engine.display == "Error" ? String(localized: .calculatorError) : engine.text)
                     .font(.system(size: 90, weight: .light))
                     .foregroundStyle(.white)
                     .lineLimit(1)
@@ -121,7 +121,8 @@ struct CalculatorView: View {
     private func faceIDPasses() async -> Bool {
         guard faceID else { return true }
         do {
-            return try await LAContext().evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Open the vault")
+            let reason = String(localized: .calculatorUnlockReason)
+            return try await LAContext().evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason)
         } catch LAError.passcodeNotSet {
             return true
         } catch {

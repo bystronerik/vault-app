@@ -24,17 +24,17 @@ struct ItemViewer: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Close", systemImage: "xmark") { dismiss() }
+                    Button(.itemViewerClose, systemImage: "xmark") { dismiss() }
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     ShareLink(item: VaultExport(item: current), preview: SharePreview(current.url.lastPathComponent)) {
                         Image(systemName: "square.and.arrow.up")
                     }
-                    Button("Delete", systemImage: "trash", role: .destructive) { confirmDelete = true }
+                    Button(.vaultDeleteButton, systemImage: "trash", role: .destructive) { confirmDelete = true }
                 }
             }
-            .confirmationDialog("Delete this item?", isPresented: $confirmDelete, titleVisibility: .visible) {
-                Button("Delete", role: .destructive) { delete() }
+            .confirmationDialog(.itemViewerDeleteTitle, isPresented: $confirmDelete, titleVisibility: .visible) {
+                Button(.vaultDeleteButton, role: .destructive) { delete() }
             }
         }
     }
@@ -71,7 +71,7 @@ private struct PhotoPage: View {
 
     var body: some View {
         ZoomableImage(image: image)
-            .overlay { if failed { Text("Cannot open this item").foregroundStyle(.secondary) } }
+            .overlay { if failed { Text(.itemViewerErrorCannotOpen).foregroundStyle(.secondary) } }
             .task {
                 let key = Session.shared.masterKey
                 image = await Task.detached {

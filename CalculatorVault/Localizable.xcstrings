@@ -1,0 +1,438 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "calculator.error" : {
+      "comment" : "Calculator display after a division by zero. Keep it short; it shows in very large digits.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Error"
+          }
+        }
+      }
+    },
+    "calculator.unlock.reason" : {
+      "comment" : "Reason in the passcode sheet after Face ID fails. The system shows it below the passcode prompt.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open the vault"
+          }
+        }
+      }
+    },
+    "itemViewer.close" : {
+      "comment" : "Button that closes the full-screen item viewer. Shows as an icon; VoiceOver reads the text.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close"
+          }
+        }
+      }
+    },
+    "itemViewer.delete.title" : {
+      "comment" : "Title of the dialog that asks the user to confirm the delete of the item on the screen.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete this item?"
+          }
+        }
+      }
+    },
+    "itemViewer.error.cannotOpen" : {
+      "comment" : "Message in the full-screen viewer when a photo cannot be decrypted or decoded.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cannot open this item"
+          }
+        }
+      }
+    },
+    "lockTimeout.label" : {
+      "comment" : "Label of the setting that sets the time with no touch before the vault locks.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lock Timeout"
+          }
+        }
+      }
+    },
+    "lockTimeout.option.fifteenMinutes" : {
+      "comment" : "Lock timeout option in Settings. The vault locks after 15 minutes with no touch.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "15 minutes"
+          }
+        }
+      }
+    },
+    "lockTimeout.option.fiveMinutes" : {
+      "comment" : "Lock timeout option in Settings. The vault locks after 5 minutes with no touch.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "5 minutes"
+          }
+        }
+      }
+    },
+    "lockTimeout.option.instant" : {
+      "comment" : "Lock timeout option in Settings. The vault locks when the app goes to the background or the app switcher.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instant"
+          }
+        }
+      }
+    },
+    "lockTimeout.option.oneHour" : {
+      "comment" : "Lock timeout option in Settings. The vault locks after 1 hour with no touch.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 hour"
+          }
+        }
+      }
+    },
+    "lockTimeout.option.oneMinute" : {
+      "comment" : "Lock timeout option in Settings. The vault locks after 1 minute with no touch.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 minute"
+          }
+        }
+      }
+    },
+    "lockTimeout.option.thirtyMinutes" : {
+      "comment" : "Lock timeout option in Settings. The vault locks after 30 minutes with no touch.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "30 minutes"
+          }
+        }
+      }
+    },
+    "pinSetup.button.save" : {
+      "comment" : "Button that saves the new PIN on the PIN screen.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save PIN"
+          }
+        }
+      }
+    },
+    "pinSetup.error.invalidPIN" : {
+      "comment" : "Error on the PIN screen when the new PIN has the wrong length or starts with 0.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use 4 to 8 digits. The first digit must not be 0."
+          }
+        }
+      }
+    },
+    "pinSetup.error.mismatch" : {
+      "comment" : "Error on the PIN screen when the new PIN and the confirmed PIN are different.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The two PINs are not the same."
+          }
+        }
+      }
+    },
+    "pinSetup.error.saveFailed" : {
+      "comment" : "Error on the PIN screen when the Keychain write fails.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The app could not save the PIN."
+          }
+        }
+      }
+    },
+    "pinSetup.error.wrongCurrentPIN" : {
+      "comment" : "Error on the Change PIN screen when the Current PIN field has the wrong PIN.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The current PIN is not correct."
+          }
+        }
+      }
+    },
+    "pinSetup.field.confirmPIN" : {
+      "comment" : "Placeholder of the field where the user types the new PIN a second time.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirm PIN"
+          }
+        }
+      }
+    },
+    "pinSetup.field.currentPIN" : {
+      "comment" : "Placeholder of the field where the user types the PIN that is in use now.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Current PIN"
+          }
+        }
+      }
+    },
+    "pinSetup.field.newPIN" : {
+      "comment" : "Placeholder of the field where the user types the new PIN. The PIN has 4 to 8 digits.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New PIN (4 to 8 digits)"
+          }
+        }
+      }
+    },
+    "pinSetup.footer" : {
+      "comment" : "Help text on the PIN screen. % is the percent key on the calculator. Keep the % sign.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "To open the vault, type the PIN on the calculator and press %."
+          }
+        }
+      }
+    },
+    "pinSetup.title.change" : {
+      "comment" : "Title of the screen that changes the PIN from inside the vault. Use a title form, not a button form.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Change PIN"
+          }
+        }
+      }
+    },
+    "pinSetup.title.set" : {
+      "comment" : "Title of the screen that sets the first PIN on the first launch. Use a title form.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set PIN"
+          }
+        }
+      }
+    },
+    "settings.changePIN" : {
+      "comment" : "Button in Settings. It opens the screen that changes the PIN. Use a verb form.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Change PIN"
+          }
+        }
+      }
+    },
+    "settings.faceID" : {
+      "comment" : "Switch in Settings. When on, the app asks for Face ID after the PIN. Use the Apple name for Face ID in your language.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Face ID"
+          }
+        }
+      }
+    },
+    "settings.title" : {
+      "comment" : "Name of the settings page. Shows as the page title and as the menu item that opens the page.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Settings"
+          }
+        }
+      }
+    },
+    "vault.delete.button" : {
+      "comment" : "Button that deletes vault items. Shows in menus, toolbars, and the delete confirmation dialog. Use a verb.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete"
+          }
+        }
+      }
+    },
+    "vault.delete.title" : {
+      "comment" : "Title of the dialog that asks the user to confirm the delete. %lld is the number of items. Keep the ^[...](inflect: true) markup, or use plural variations.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete ^[%lld item](inflect: true)?"
+          }
+        }
+      }
+    },
+    "vault.empty.message" : {
+      "comment" : "Text below the empty vault title. + is the Import button in the toolbar. Keep the + sign.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap + to import photos and videos."
+          }
+        }
+      }
+    },
+    "vault.empty.title" : {
+      "comment" : "Title that shows when the vault has no photos or videos.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Items"
+          }
+        }
+      }
+    },
+    "vault.menu.select" : {
+      "comment" : "Menu item on the vault screen. It starts selection mode, so the user can select many items. Use a verb.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select"
+          }
+        }
+      }
+    },
+    "vault.selection.done" : {
+      "comment" : "Button that ends selection mode on the vault screen and clears the selection.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Done"
+          }
+        }
+      }
+    },
+    "vault.selection.title" : {
+      "comment" : "Title of the vault screen in selection mode. %lld is the number of selected items. The number can be 0.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Selected"
+          }
+        }
+      }
+    },
+    "vault.title" : {
+      "comment" : "Title of the main vault screen that shows the grid of photos and videos.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vault"
+          }
+        }
+      }
+    },
+    "vault.toolbar.import" : {
+      "comment" : "Button that opens the photo picker to add photos and videos to the vault. Shows as a + icon; VoiceOver reads the text.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import"
+          }
+        }
+      }
+    },
+    "vault.toolbar.lock" : {
+      "comment" : "Button that locks the vault and shows the calculator. Use a verb. Shows as an icon; VoiceOver reads the text.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lock"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}
