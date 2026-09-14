@@ -153,6 +153,33 @@ It also closes the viewer, the sheets, and the pickers with no animation.
 - Build the app as described in [Install](#install).
 - Open a pull request against `main`.
 
+### Code checks
+
+A Git pre-commit hook checks the Swift files before each commit. [Lefthook](https://lefthook.dev) runs these tools in this order:
+
+- [SwiftFormat](https://github.com/nicklockwood/SwiftFormat) formats the staged Swift files and adds the changes to the commit.
+- [SwiftLint](https://github.com/realm/SwiftLint) finds style and code problems. A warning also stops the commit.
+- [Periphery](https://github.com/peripheryapp/periphery) builds the app and the tests, and finds unused code.
+
+1. Install the tools.
+
+   ```bash
+   brew install swiftformat swiftlint periphery lefthook
+   ```
+
+2. Install the hook in your clone.
+
+   ```bash
+   lefthook install
+   ```
+
+- Run time: about 5 to 15 seconds for a commit that changes Swift files. A commit without Swift files skips the checks.
+- The configuration is in `.swiftformat`, `.swiftlint.yml`, `.periphery.yml`, and `lefthook.yml`.
+- The hook builds the app into `build/periphery`. The default build cache of Periphery is the same for all clones of the project, and other clones cause false results.
+- When you commit part of a file, Lefthook removes the other changes of that file until the hook ends. Then it puts them back.
+- If Periphery reports code that the app uses, add `// periphery:ignore` to the declaration.
+- To skip the checks for one commit, use `git commit --no-verify`.
+
 ### Performance tests
 
 The `CalculatorVaultTests` target measures how fast the app opens and shows large vaults.

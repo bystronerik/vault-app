@@ -1,0 +1,26 @@
+pre-commit:
+  # Stop at the first failure, so Periphery does not build after a lint error.
+  piped: true
+  jobs:
+    - name: swiftformat
+      glob: "*.swift"
+      run: swiftformat {staged_files}
+      stage_fixed: true
+      # Xcode and other GUI git clients do not load the shell profile.
+      env: &homebrew
+        PATH: /opt/homebrew/bin:$PATH
+    - name: swiftlint
+      glob: "*.swift"
+      run: swiftlint lint --strict --quiet {staged_files}
+      env: *homebrew
+    - name: periphery
+      # Lefthook skips this job when no Swift file is staged.
+      glob: "*.swift"
+      # Periphery keeps one build cache for all checkouts of the project, and other checkouts cause false results.
+      # Thus the job builds into build/periphery of this checkout.
+      run: >-
+        xcodebuild build-for-testing -quiet -project CalculatorVault.xcodeproj -scheme CalculatorVault
+        -destination 'generic/platform=iOS Simulator' -derivedDataPath build/periphery
+        CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=YES
+        && periphery scan --quiet --skip-build --index-store-path build/periphery/Index.noindex/DataStore
+      env: *homebrew
