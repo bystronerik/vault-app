@@ -192,7 +192,11 @@ struct ImportedFile: Transferable {
         let id = UUID().uuidString
         // For an extension that the system does not know, UTType gives a dynamic type.
         let type = UTType(filenameExtension: source.pathExtension).flatMap { $0.isDynamic ? nil : $0 } ?? contentType
+        // ponytail: the photo picker sets the modification date of its file to the date of the item in the Photos app. A file with
+        // no date in its metadata, for example an image that another app saved, gets that date. Apple does not document this.
+        // If it changes, such an item sorts by its import date, as before.
         let created = await Self.captureDate(of: source, isVideo: type.conforms(to: .movie))
+            ?? (try? source.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
         try VaultCrypto.encrypt(from: source, to: database.directory.appending(path: id), key: key) {
             try database.write { db in
                 try db.execute(sql: "INSERT INTO item (id, originalFilename, type, created, imported) VALUES (?, ?, ?, ?, ?)",
