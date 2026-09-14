@@ -25,12 +25,14 @@ Build from source:
 1. On the first launch, the app shows the **Set PIN** screen. Enter a PIN of 4 to 8 digits and confirm it.
    The first digit must not be 0, because the calculator drops leading zeros.
 2. To open the vault, type the PIN and press `%`. With a wrong PIN, `%` works as the percent operator.
-3. To lock the vault, tap the lock button. The vault also locks when the app goes to the background,
-   or after 60 seconds with no touch.
+3. To lock the vault, tap the lock button. The vault also locks after the lock timeout.
+   See [Lock behavior](#lock-behavior).
 4. To change the PIN, open the vault, tap the `...` menu, tap **Settings**, and tap **Change PIN**.
 5. To use Face ID, open the vault, tap the `...` menu, tap **Settings**, and turn on **Face ID**.
    Face ID is off by default. When it is on, the app asks for Face ID after the correct PIN.
    If Face ID fails, you can type the device passcode.
+6. To set the lock timeout, open the vault, tap the `...` menu, tap **Settings**, and tap **Lock Timeout**.
+   The default is **Instant**.
 
 There is no PIN recovery. If you forget the PIN, the vault files are lost.
 
@@ -53,6 +55,7 @@ The app does not protect against:
 - a person who extracts the Keychain item and tries PINs offline. A 4-digit PIN has 10 000 values.
   Face ID does not prevent this.
 - malware or a jailbroken device. Decrypted data is in memory while the vault is open.
+- with a lock timeout other than **Instant**, a person who holds the unlocked phone before the lock timeout ends.
 
 A hidden vault is not a substitute for the device passcode and iOS data protection.
 The share copy in `tmp/share/` is plaintext until the next lock.
@@ -104,10 +107,29 @@ Code: `CalculatorVault/Security/` holds the PIN and Keychain code.
 
 ### Lock behavior
 
-The vault locks when you tap the lock button, when the app goes to the background,
-and after 60 seconds with no touch. A running video does not count as a touch.
+The vault locks when you tap the lock button and after the lock timeout. A running video does not count as a touch.
+
+- **Instant**: the vault locks when you open the app switcher and when the app goes to the background.
+  It also locks after 1 minute with no touch. Control Center and Notification Center do not lock the vault.
+- **1 minute** to **1 hour**: the vault locks after that time with no touch. The time also counts while you use other apps.
+  When you return to the app after that time, the app locks the vault before it shows the vault.
+
+iOS makes the app inactive for the app switcher, Control Center, and Notification Center.
+iOS does not tell the app which one it is. The app switcher gesture sends a touch on the home indicator to the app.
+The Control Center and Notification Center gestures send no touch.
+With **Instant**, the app locks the vault when it becomes inactive and the last touch was on the home indicator.
+In these conditions, the app cannot see that touch, so the vault locks each time the app becomes inactive:
+
+- on an iPhone with a Home button,
+- with VoiceOver, Switch Control, or AssistiveTouch on,
+- while the keyboard, the photo picker, or the share sheet shows.
+
+Voice Control can open the app switcher with no touch. Then the vault stays open until the app goes to the background,
+or until 1 minute passes with no touch.
+
 When the app becomes inactive, a calculator view covers the window, so the app switcher does not show the vault.
 At the lock, the app clears the master key and empties the in-memory cache of thumbnails and previews.
+It also closes the viewer, the sheets, and the pickers with no animation.
 
 ### Backup, restore, and reinstall
 

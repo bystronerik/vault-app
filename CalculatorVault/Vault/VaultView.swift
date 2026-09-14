@@ -112,12 +112,22 @@ struct VaultView: View {
 /// The settings page. It opens from the vault menu.
 private struct SettingsView: View {
     @AppStorage("faceID") private var faceID = false
+    /// In seconds. 0 is Instant.
+    @AppStorage("lockTimeout") private var lockTimeout = 0
     @State private var changingPIN = false
 
     var body: some View {
         Form {
             Button("Change PIN") { changingPIN = true }
             Toggle("Face ID", isOn: $faceID)
+            Picker("Lock Timeout", selection: $lockTimeout) {
+                Text("Instant").tag(0)
+                Text("1 minute").tag(60)
+                Text("5 minutes").tag(300)
+                Text("15 minutes").tag(900)
+                Text("30 minutes").tag(1800)
+                Text("1 hour").tag(3600)
+            }
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)

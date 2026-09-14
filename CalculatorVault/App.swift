@@ -28,6 +28,9 @@ struct CalculatorVaultApp: App {
 private final class TouchSpy: UIGestureRecognizer {
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
         Session.shared.lastTouch = Date()
+        if let view, let y = touches.first?.location(in: view).y {
+            Session.shared.lastTouchAtBottom = y >= view.bounds.height - view.safeAreaInsets.bottom
+        }
         state = .failed
     }
 }
@@ -36,8 +39,12 @@ private final class TouchSpy: UIGestureRecognizer {
     static let shared = Session()
     var unlocked = false
     var lastTouch = Date()
+    /// True when the last touch started in the bottom safe area, where the home indicator gestures start.
+    var lastTouchAtBottom = false
     /// True while a system picker is open. Its touches do not reach this app.
     var paused = false
+    /// True while the keyboard shows. It is in another window, so its touches do not reach the gesture recognizer.
+    var keyboardShown = false
     @ObservationIgnored private let cover = UIHostingController(rootView: CalculatorView())
     @ObservationIgnored private let key = OSAllocatedUnfairLock<SymmetricKey?>(initialState: nil)
     /// The master key while the vault is open. Safe to read from any thread.
@@ -50,15 +57,37 @@ private final class TouchSpy: UIGestureRecognizer {
     }
 
     /// Clears the master key, so every decrypt stops, empties the image cache, and removes the plaintext share copies.
+    /// Closes the viewer, the sheets, and the pickers with no animation, so no closing screen shows the vault.
     @MainActor func lock() {
         unlocked = false
+        // The vault view is gone, so the picker cannot clear this flag.
+        paused = false
         key.withLock { $0 = nil }
+        window?.rootViewController?.dismiss(animated: false)
         VaultStore.cache.removeAllObjects()
         try? FileManager.default.removeItem(at: shareDirectory)
     }
 
     private var window: UIWindow? {
         UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first
+    }
+
+    /// True when the app became inactive for the app switcher, or when it cannot tell.
+    /// The app switcher gesture sends a touch on the home indicator first. The Control Center and Notification Center
+    /// gestures send no touch. The app cannot see that touch with no home indicator, with an assistive technology,
+    /// under the keyboard or the photo picker, or under a UIKit screen such as the share sheet.
+    var leftForAppSwitcher: Bool {
+        guard let window, !lastTouchAtBottom, window.safeAreaInsets.bottom > 0, !paused, !keyboardShown,
+              !UIAccessibility.isVoiceOverRunning, !UIAccessibility.isSwitchControlRunning,
+              !UIAccessibility.isAssistiveTouchRunning else { return true }
+        // SwiftUI shows its sheets and the photo picker in hosting controllers, and `paused` covers the picker.
+        // The share sheet runs in another process, and it is not in a hosting controller.
+        var next = window.rootViewController?.presentedViewController
+        while let vc = next {
+            if !(vc is UIHostingController<AnyView>) { return true }
+            next = vc.presentedViewController
+        }
+        return false
     }
 
     func watchTouches() {
@@ -82,6 +111,8 @@ struct RootView: View {
     @Environment(\.scenePhase) private var phase
     @State private var session = Session.shared
     @State private var hasPIN = PINStore.exists()
+    /// In seconds. 0 is Instant.
+    @AppStorage("lockTimeout") private var lockTimeout = 0
     private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -97,14 +128,24 @@ struct RootView: View {
         .onAppear { session.watchTouches() }
         .onChange(of: phase) { _, new in
             switch new {
-            case .inactive: if session.unlocked { session.setCovered(true) }
-            case .background: session.lock()
-            case .active: session.watchTouches(); session.setCovered(false)
+            case .inactive, .background:
+                if session.unlocked { session.setCovered(true) }
+                // The app can return to active from the app switcher and not go to the background.
+                if lockTimeout == 0, new == .background || session.leftForAppSwitcher { session.lock() }
+            case .active:
+                // A suspended app gets no tick. Check the timeout before the cover goes.
+                lockIfIdle()
+                session.watchTouches(); session.setCovered(false)
             @unknown default: break
             }
         }
-        .onReceive(tick) { now in
-            if session.unlocked, !session.paused, now.timeIntervalSince(session.lastTouch) > 60 { session.lock() }
-        }
+        .onReceive(tick) { _ in if !session.paused { lockIfIdle() } }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in session.keyboardShown = true }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)) { _ in session.keyboardShown = false }
+    }
+
+    /// Locks after the lock timeout with no touch. For Instant, the limit is 1 minute.
+    private func lockIfIdle() {
+        if session.unlocked, Date().timeIntervalSince(session.lastTouch) > TimeInterval(max(lockTimeout, 60)) { session.lock() }
     }
 }
