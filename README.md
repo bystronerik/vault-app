@@ -111,8 +111,6 @@ Code: `CalculatorVault/Security/` holds the PIN and Keychain code.
 - The nonce of a chunk is the prefix plus the chunk index.
 - The first 20 bytes of the header are the additional authenticated data of every chunk. The key wrap checks the wrapped file key.
 - A file with the length 0 has no chunks, so no tag checks its header.
-- The app also reads version 1 files. It writes only version 2 files.
-  A version 1 file has the magic `CVLT`, no wrapped file key, and chunks under the master key.
 - A new vault file has the name `<id>` with no extension. `<id>` is a random UUID and the id of the row in the database.
 - The app writes to a hidden `.part` file and renames it when the write completes.
 - Thumbnail file: a JPEG of not more than 450 pixels on the long side, encrypted with AES-256-GCM under the thumbnail key.
