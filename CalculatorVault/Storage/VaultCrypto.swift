@@ -70,11 +70,14 @@ enum VaultCrypto {
             defer { try? output.close() }
             try output.seekToEnd()
             var index: UInt32 = 0
-            while let chunk = try input.read(upToCount: chunkSize), !chunk.isEmpty {
+            // The pool releases the read buffers after each chunk. Without it, they stay until the caller's pool empties.
+            while try autoreleasepool(invoking: {
+                guard let chunk = try input.read(upToCount: chunkSize), !chunk.isEmpty else { return false }
                 let box = try AES.GCM.seal(chunk, using: key, nonce: nonce(header, index), authenticating: header)
                 try output.write(contentsOf: box.ciphertext + box.tag)
                 index += 1
-            }
+                return true
+            }) {}
             try FileManager.default.moveItem(at: part, to: destination)
         } catch {
             try? FileManager.default.removeItem(at: part)
@@ -98,16 +101,18 @@ enum VaultCrypto {
         guard range.upperBound <= total else { throw Failure.badFormat }
         var index = UInt32(range.lowerBound / UInt64(chunkSize))
         while UInt64(index) * UInt64(chunkSize) < range.upperBound {
-            let start = UInt64(index) * UInt64(chunkSize)
-            let size = Int(min(UInt64(chunkSize), total - start))
-            try handle.seek(toOffset: UInt64(headerSize) + UInt64(index) * UInt64(chunkSize + tagSize))
-            guard let stored = try handle.read(upToCount: size + tagSize), stored.count == size + tagSize else { throw Failure.badFormat }
-            let box = try AES.GCM.SealedBox(nonce: nonce(header, index), ciphertext: stored.prefix(size), tag: stored.suffix(tagSize))
-            let plain = try AES.GCM.open(box, using: key, authenticating: header)
-            let lo = Int(max(range.lowerBound, start) - start)
-            let hi = Int(min(range.upperBound, start + UInt64(size)) - start)
-            try body(plain.dropFirst(lo).prefix(hi - lo))
-            index += 1
+            try autoreleasepool {
+                let start = UInt64(index) * UInt64(chunkSize)
+                let size = Int(min(UInt64(chunkSize), total - start))
+                try handle.seek(toOffset: UInt64(headerSize) + UInt64(index) * UInt64(chunkSize + tagSize))
+                guard let stored = try handle.read(upToCount: size + tagSize), stored.count == size + tagSize else { throw Failure.badFormat }
+                let box = try AES.GCM.SealedBox(nonce: nonce(header, index), ciphertext: stored.prefix(size), tag: stored.suffix(tagSize))
+                let plain = try AES.GCM.open(box, using: key, authenticating: header)
+                let lo = Int(max(range.lowerBound, start) - start)
+                let hi = Int(min(range.upperBound, start + UInt64(size)) - start)
+                try body(plain.dropFirst(lo).prefix(hi - lo))
+                index += 1
+            }
         }
     }
 
